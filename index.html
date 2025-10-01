@@ -21,6 +21,10 @@
       שלב 1: הדבק כאן את קוד ה-AdSense הראשי שקיבלת מגוגל.
       זהו קוד ה-JavaScript שמתחיל ב-<script async src="..."> 
     -->
+    
+    <!-- This script will compile your JSX/TSX code directly in the browser -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
 <script type="importmap">
 {
   "imports": {
@@ -33,6 +37,10 @@
 </head>
 <body class="bg-gray-100">
     <div id="root"></div>
-    <script type="module" src="./index.tsx"></script>
+    <!-- 
+      Notice the type is changed to "text/babel".
+      This tells the Babel script to process this file before the browser runs it.
+    -->
+    <script type="text/babel" data-type="module" src="./index.tsx"></script>
 </body>
 </html>
