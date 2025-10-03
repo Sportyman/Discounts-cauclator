@@ -8,13 +8,24 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <!-- Old fonts for other themes -->
     <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;700;800&family=Patrick+Hand&display=swap" rel="stylesheet">
+    <!-- New font for modern theme -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-      .font-assistant {
-        font-family: 'Assistant', sans-serif;
-      }
-      .font-patrick-hand {
-        font-family: 'Patrick Hand', cursive;
+      .font-assistant { font-family: 'Assistant', sans-serif; }
+      .font-patrick-hand { font-family: 'Patrick Hand', cursive; }
+      .font-inter { font-family: 'Inter', sans-serif; }
+      body.theme-modern {
+        background-color: #020617; /* slate-950 */
+        background-image: radial-gradient(at 27% 37%, hsla(215, 98%, 61%, 0.4) 0px, transparent 50%),
+                          radial-gradient(at 97% 21%, hsla(125, 98%, 72%, 0.3) 0px, transparent 50%),
+                          radial-gradient(at 52% 99%, hsla(355, 98%, 76%, 0.3) 0px, transparent 50%),
+                          radial-gradient(at 10% 29%, hsla(256, 96%, 68%, 0.4) 0px, transparent 50%),
+                          radial-gradient(at 97% 96%, hsla(38, 60%, 74%, 0.2) 0px, transparent 50%),
+                          radial-gradient(at 33% 50%, hsla(222, 67%, 73%, 0.3) 0px, transparent 50%),
+                          radial-gradient(at 79% 53%, hsla(343, 68%, 79%, 0.4) 0px, transparent 50%);
+        background-attachment: fixed;
       }
     </style>
     <!-- 

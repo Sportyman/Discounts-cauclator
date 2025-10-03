@@ -1,5 +1,7 @@
 {
-  "name": "Copy of מחשבון הנחות",
-  "description": "*גיבוי לניסיו עיצוב מחדש*\nאפליקציה פשוטה לחישוב הנחות. הזן את המחיר המקורי, בחר אחוז הנחה, וקבל את המחיר הסופי באופן מיידי.",
-  "requestFramePermissions": []
+  "name": "Copy of Copy of מחשבון הנחות",
+  "description": "*גירסה קודמת מושלמת כוללת מדריך*\nמתחיל לנסות עיצובים חדשים נוספים\n",
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }
