@@ -628,6 +628,11 @@ const App = () => {
     }, initialPrice);
   }, [priceStr, discounts]);
 
+  const discountsRef = useRef(discounts);
+  useEffect(() => {
+    discountsRef.current = discounts;
+  }, [discounts]);
+
   const longPressTimerRef = useRef(null);
   const rapidDeleteIntervalRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -906,7 +911,7 @@ const App = () => {
                 if (numberStr) {
                     setPriceStr(numberStr);
                     
-                    const tempFinalPrice = discounts.reduce((currentPrice, discount) => {
+                    const tempFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
                        if (discount.active) return currentPrice * (1 - discount.value / 100);
                        return currentPrice;
                     }, parseFloat(numberStr) || 0);
@@ -943,6 +948,7 @@ const App = () => {
     <div className={`flex justify-center ${currentTheme.bodyBg} ${currentTheme.font}`}>
       {isTutorialActive && <Tutorial onFinish={finishTutorial} />}
       <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
+      {isThemeDropdownOpen && <div className="fixed inset-0 z-50" onClick={() => setIsThemeDropdownOpen(false)} aria-hidden="true" />}
       {renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false))}
       {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
       
@@ -950,8 +956,8 @@ const App = () => {
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
             <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
                 <div className="flex justify-between items-center mb-6">
-                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
                     <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-3 pr-2">
                     {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
@@ -974,8 +980,8 @@ const App = () => {
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
             <div className="flex justify-between items-center mb-6">
-               <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
-               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
@@ -1014,12 +1020,9 @@ const App = () => {
             <div className="relative">
               <button onClick={() => setIsThemeDropdownOpen(prev => !prev)} className={currentTheme.iconClasses} aria-label="Change theme"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg></button>
               {isThemeDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-50" onClick={() => setIsThemeDropdownOpen(false)} aria-hidden="true" />
                   <div className={`absolute top-full left-0 mt-2 w-56 rounded-md shadow-lg p-2 border z-[60] border-gray-200 ${currentTheme.modalBg}`} role="menu">
                       <div className="space-y-1">{(Object.keys(themes)).map(themeKey => (<button key={themeKey} onClick={() => { setTheme(themeKey); setIsThemeDropdownOpen(false); }} className={`w-full text-right p-3 rounded-md transition-colors text-base ${theme === themeKey ? 'bg-sky-500/50 text-sky-100 font-bold' : `hover:bg-black/20 ${currentTheme.modalTextColor}`}`} role="menuitem">{themes[themeKey].name}</button>))}</div>
                   </div>
-                </>
               )}
             </div>
           </div>
