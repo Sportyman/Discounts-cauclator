@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 
 // --- Theme Definitions ---
@@ -529,10 +526,10 @@ const Tutorial: React.FC<{onFinish: () => void}> = ({ onFinish }) => {
                 }}
             ></div>
             
-            <div style={tooltipStyle} className="absolute z-[101] w-72 p-4 bg-white rounded-lg shadow-xl text-gray-800 font-assistant">
+            <div style={tooltipStyle} className="absolute z-[101] w-80 p-4 bg-white rounded-lg shadow-xl text-gray-800 font-assistant">
                 <span className="absolute top-3 left-3 text-xs font-mono text-gray-400">{stepIndex + 1} / {tutorialSteps.length}</span>
                 <h3 className="font-bold text-lg mb-2 pt-2">{step.title}</h3>
-                <p className="text-base">{step.text}</p>
+                <p className="text-lg leading-relaxed">{step.text}</p>
                 <div className="flex justify-between items-center mt-4">
                     <button onClick={onFinish} className="text-xs text-gray-500 hover:underline">דלג</button>
                     <div className="flex items-center gap-2">

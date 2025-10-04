@@ -1,34 +1,17 @@
 
-const CACHE_NAME = 'discount-calculator-v1';
+const CACHE_NAME = 'discount-calculator-v2';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/index.tsx',
-  // You would add other assets here like your main JS bundle, CSS files, etc.
-  // For now, these are the essentials for the current setup.
-  // Note: External resources like Google Fonts or TailwindCSS CDN are not cached by this basic setup.
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
+        console.log('Opened cache and caching initial assets');
         return cache.addAll(urlsToCache);
       })
-  );
-});
-
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request);
-      }
-    )
   );
 });
 
@@ -44,5 +27,26 @@ self.addEventListener('activate', event => {
         })
       );
     })
+  );
+});
+
+self.addEventListener('fetch', event => {
+  // Use a network-first strategy
+  event.respondWith(
+    fetch(event.request)
+      .then(response => {
+        // If the fetch is successful, update the cache
+        if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+                cache.put(event.request, responseToCache);
+            });
+        }
+        return response;
+      })
+      .catch(() => {
+        // If the network fails, serve from the cache
+        return caches.match(event.request);
+      })
   );
 });
