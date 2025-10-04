@@ -607,14 +607,15 @@ const App = () => {
   const [history, setHistory] = useState(() => getFromLocalStorage('calculator-history', []));
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => getFromLocalStorage('calculator-sound-enabled', false));
   const [isVibrationEnabled, setIsVibrationEnabled] = useState(() => getFromLocalStorage('calculator-vibration-enabled', true));
-  const [isSpeakResponseEnabled, setIsSpeakResponseEnabled] = useState(() => getFromLocalStorage('calculator-speak-response-enabled', true));
+  const [isVoiceFeedbackEnabled, setIsVoiceFeedbackEnabled] = useState(() => getFromLocalStorage('calculator-voice-feedback-enabled', true));
   const [useImageBackground, setUseImageBackground] = useState(() => getFromLocalStorage('calculator-image-background-enabled', true));
   const [isTutorialActive, setIsTutorialActive] = useState(false);
   
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening', 'speaking'
+  const [speakTrigger, setSpeakTrigger] = useState(null);
   const [hebrewVoice, setHebrewVoice] = useState(null);
   
   const finalPrice = useMemo(() => {
@@ -627,17 +628,16 @@ const App = () => {
   }, [priceStr, discounts]);
 
   const discountsRef = useRef(discounts);
-  useEffect(() => { discountsRef.current = discounts; }, [discounts]);
-
-  const isSpeakResponseEnabledRef = useRef(isSpeakResponseEnabled);
-  useEffect(() => { isSpeakResponseEnabledRef.current = isSpeakResponseEnabled; }, [isSpeakResponseEnabled]);
+  useEffect(() => {
+    discountsRef.current = discounts;
+  }, [discounts]);
 
   const longPressTimerRef = useRef(null);
   const rapidDeleteIntervalRef = useRef(null);
   const audioContextRef = useRef(null);
   const recognitionRef = useRef(null);
-  const isSpeakingRef = useRef(false);
   const isContinuousModeRef = useRef(false);
+  const stopListeningUserRequest = useRef(false);
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -679,38 +679,44 @@ const App = () => {
   useEffect(() => { saveToLocalStorage('calculator-theme', theme); }, [theme]);
   useEffect(() => { saveToLocalStorage('calculator-sound-enabled', isSoundEnabled); }, [isSoundEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-vibration-enabled', isVibrationEnabled); }, [isVibrationEnabled]);
-  useEffect(() => { saveToLocalStorage('calculator-speak-response-enabled', isSpeakResponseEnabled); }, [isSpeakResponseEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-voice-feedback-enabled', isVoiceFeedbackEnabled); }, [isVoiceFeedbackEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
   
-  const speak = (priceToSpeak) => {
-    if (!isSpeakResponseEnabledRef.current) return;
-    
-    isSpeakingRef.current = true;
-    window.speechSynthesis.cancel();
-    
-    const isWholeNumber = priceToSpeak % 1 === 0;
-    const formattedPriceToSpeak = isWholeNumber 
-        ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-        : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+ useEffect(() => {
+    if (speakTrigger !== null) {
+        if (isContinuousModeRef.current && recognitionRef.current) {
+            recognitionRef.current.stop();
+        }
 
-    const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
-    utterance.lang = 'he-IL';
+        window.speechSynthesis.cancel();
+        
+        const priceToSpeak = speakTrigger; // The price is passed in the trigger
+        
+        const isWholeNumber = priceToSpeak % 1 === 0;
+        const formattedPriceToSpeak = isWholeNumber 
+            ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+            : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-    if (hebrewVoice) {
-        utterance.voice = hebrewVoice;
+        const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
+        utterance.lang = 'he-IL';
+
+        if (hebrewVoice) {
+            utterance.voice = hebrewVoice;
+        }
+        utterance.rate = 1.2;
+
+        utterance.onend = () => {
+            if (isContinuousModeRef.current && recognitionRef.current && !stopListeningUserRequest.current) {
+                recognitionRef.current.start();
+            } else if (!isContinuousModeRef.current) {
+                setVoiceState('idle');
+            }
+        };
+
+        window.speechSynthesis.speak(utterance);
+        setSpeakTrigger(null);
     }
-    utterance.rate = 1.2;
-
-    utterance.onend = () => {
-        isSpeakingRef.current = false;
-    };
-    
-    utterance.onerror = () => {
-        isSpeakingRef.current = false;
-    };
-
-    window.speechSynthesis.speak(utterance);
-  };
+  }, [speakTrigger, hebrewVoice]);
 
   const setTheme = (newTheme) => setThemeState(newTheme);
   
@@ -856,69 +862,70 @@ const App = () => {
       alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
       return;
     }
-    
-    if (isContinuousModeRef.current) {
-        // Stop listening
-        isContinuousModeRef.current = false;
-        if (recognitionRef.current) {
-            recognitionRef.current.stop();
-        }
-        window.speechSynthesis.cancel();
-        setIsListening(false);
-        return;
-    }
-
-    // Start listening
-    isContinuousModeRef.current = true;
 
     if (!recognitionRef.current) {
         const recognition = new SpeechRecognition();
         recognition.lang = 'he-IL';
-        recognition.continuous = true; // Keep listening even after a pause
-        recognition.interimResults = false; // We only want the final result
+        recognition.continuous = true;
+        recognition.interimResults = true;
 
-        recognition.onstart = () => setIsListening(true);
-        
+        recognition.onstart = () => {
+            setVoiceState('listening');
+        };
+
         recognition.onend = () => {
-            setIsListening(false);
-            // If the session was ended by the user, don't restart.
-            if (isContinuousModeRef.current) {
-                // If it ends for other reasons (e.g. network error, timeout), restart it.
-                setTimeout(() => recognition.start(), 100);
+            if (isContinuousModeRef.current && voiceState !== 'speaking' && !stopListeningUserRequest.current) {
+                recognition.start();
+            } else if (!isContinuousModeRef.current) {
+                setVoiceState('idle');
             }
         };
 
         recognition.onerror = (event) => {
             console.error('Speech recognition error', event.error);
-            // No need to set isContinuousModeRef to false, onend will handle restart logic
+            isContinuousModeRef.current = false;
+            setVoiceState('idle');
         };
         
         recognition.onresult = (event) => {
-            if (isSpeakingRef.current) {
-                return; // Ignore recognition results while the app is speaking
+            let finalTranscript = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalTranscript += event.results[i][0].transcript;
+                }
             }
-            
-            const last = event.results.length - 1;
-            const finalTranscript = event.results[last][0].transcript;
-            
             if (finalTranscript.trim()) {
                 const numberStr = parseSpokenNumber(finalTranscript);
                 if (numberStr) {
                     setPriceStr(numberStr);
                     
-                    const tempFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
-                       if (discount.active) return currentPrice * (1 - discount.value / 100);
-                       return currentPrice;
-                    }, parseFloat(numberStr) || 0);
-
-                    speak(tempFinalPrice);
+                    if (isVoiceFeedbackEnabled) {
+                        const tempFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
+                           if (discount.active) return currentPrice * (1 - discount.value / 100);
+                           return currentPrice;
+                        }, parseFloat(numberStr) || 0);
+                        setVoiceState('speaking');
+                        setSpeakTrigger(tempFinalPrice);
+                    }
                 }
             }
         };
         recognitionRef.current = recognition;
     }
     
-    recognitionRef.current.start();
+    if (isContinuousModeRef.current) {
+        // Stop listening
+        isContinuousModeRef.current = false;
+        stopListeningUserRequest.current = true;
+        recognitionRef.current.stop();
+        window.speechSynthesis.cancel();
+        setVoiceState('idle');
+    } else {
+        // Start listening
+        isContinuousModeRef.current = true;
+        stopListeningUserRequest.current = false;
+        recognitionRef.current.start();
+    }
   };
 
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
@@ -930,7 +937,6 @@ const App = () => {
   return (
     <div className={`flex justify-center ${currentTheme.bodyBg} ${currentTheme.font}`}>
       {isTutorialActive && <Tutorial onFinish={finishTutorial} />}
-      <div className="sr-only" aria-live="polite" aria-atomic="true"></div>
       {isThemeDropdownOpen && <div className="fixed inset-0 z-50" onClick={() => setIsThemeDropdownOpen(false)} aria-hidden="true" />}
       {renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false))}
       {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
@@ -938,9 +944,9 @@ const App = () => {
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
             <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-                <div className="flex justify-between items-center mb-6">
-                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
+                <div className="flex justify-start items-center gap-4 mb-6">
                     <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-3 pr-2">
                     {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
@@ -962,9 +968,9 @@ const App = () => {
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+            <div className="flex justify-start items-center gap-4 mb-6">
                 <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
@@ -976,13 +982,13 @@ const App = () => {
                         <span className="font-semibold">רטט</span>
                         <div className="relative"><input type="checkbox" id="vibration-toggle" className="sr-only" checked={isVibrationEnabled} onChange={() => setIsVibrationEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVibrationEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVibrationEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
-                     <label htmlFor="speak-response-toggle" className="flex items-center justify-between cursor-pointer">
-                        <span className="font-semibold">הקראת מחיר סופי בקול</span>
-                        <div className="relative"><input type="checkbox" id="speak-response-toggle" className="sr-only" checked={isSpeakResponseEnabled} onChange={() => setIsSpeakResponseEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isSpeakResponseEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isSpeakResponseEnabled ? 'translate-x-6' : ''}`}></div></div>
-                    </label>
                     <label htmlFor="image-bg-toggle" className="flex items-center justify-between cursor-pointer">
                         <span className="font-semibold">רקע תמונה</span>
                         <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
+                    <label htmlFor="voice-feedback-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">הקראת מחיר חוזר</span>
+                        <div className="relative"><input type="checkbox" id="voice-feedback-toggle" className="sr-only" checked={isVoiceFeedbackEnabled} onChange={() => setIsVoiceFeedbackEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVoiceFeedbackEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVoiceFeedbackEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
                 </div>
             </div>
@@ -1009,10 +1015,7 @@ const App = () => {
               )}
             </div>
           </div>
-          <div className="flex items-center justify-center w-full">
-            <h1 className={`text-3xl ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>מחשבון הנחות</h1>
-            <span className="text-xs text-gray-400 mr-2 opacity-70">0.1</span>
-          </div>
+          <h1 className={`text-3xl w-full ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>מחשבון הנחות</h1>
           <button id="history-button" onClick={() => setIsHistoryOpen(true)} className={`absolute top-1/2 right-4 transform -translate-y-1/2 ${currentTheme.iconClasses}`} aria-label="View calculation history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
         </header>
 
@@ -1027,8 +1030,16 @@ const App = () => {
           </div>
           
           <div id="price-display" className={`relative p-2 text-4xl h-14 flex items-center justify-end font-sans ${currentTheme.priceDisplayClasses}`} style={{...(currentTheme.buttonBorderStyle || {})}}>
-            <button id="voice-button" onClick={handleVoiceInput} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`} aria-label="הזנת מחיר בקול">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z" clipRule="evenodd" /></svg>
+            <button id="voice-button" onClick={handleVoiceInput} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${
+                voiceState === 'listening' ? 'bg-red-500 text-white animate-pulse' : 
+                voiceState === 'speaking' ? 'bg-blue-500 text-white' :
+                'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              }`} aria-label="הזנת מחיר בקול">
+              {voiceState === 'speaking' ? (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z" clipRule="evenodd" /></svg>
+              )}
             </button>
             {priceStr && (<button onClick={clearPrice} className="absolute left-12 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300" aria-label="Clear price"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
             {priceStr ? <span className={currentTheme.priceTextClasses}>{displayPrice}</span> : <span className={currentTheme.pricePlaceholderClasses}>הזינו מחיר</span>}
