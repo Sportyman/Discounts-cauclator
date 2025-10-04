@@ -1,7 +1,978 @@
 
-import React from 'react';
+
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App.tsx';
+
+// --- START OF FORMER App.tsx CONTENT ---
+
+// --- Theme Definitions ---
+const themes = {
+  default: {
+    name: 'אאורה (חדש)',
+    headerColor: '#f8fafc',
+    presetButtonBg: 'rgba(56, 189, 248, 0.2)',
+    presetButtonTextColor: '#e0f2fe',
+    manualButtonBg: 'rgba(167, 139, 250, 0.2)',
+    manualButtonTextColor: '#ede9fe',
+    finalPriceColor: '#67e8f9',
+    resetButtonBg: 'rgba(244, 114, 182, 0.2)',
+    resetButtonTextColor: '#fce7f3',
+    bodyBg: 'bg-transparent',
+    containerBg: 'bg-slate-900/60 backdrop-blur-2xl border border-slate-700/50 shadow-2xl shadow-black/30 rounded-3xl',
+    font: 'font-inter',
+    buttonClasses: 'rounded-xl shadow-lg border border-white/10 hover:bg-white/20 active:scale-95 transition-all duration-150 backdrop-blur-sm',
+    numpadClasses: 'bg-white/5 border border-white/10 text-slate-200 rounded-xl shadow-md hover:bg-white/10 active:scale-95 active:bg-white/15 transition-all duration-150 backdrop-blur-sm',
+    priceDisplayClasses: 'bg-slate-950/50 border border-slate-700 rounded-xl backdrop-blur-sm',
+    headerClasses: 'font-bold text-slate-100 tracking-wide',
+    // New detailed properties for modern UI
+    iconClasses: "p-2 text-slate-300 hover:text-white transition-colors",
+    modalBg: 'bg-slate-800/80 backdrop-blur-xl',
+    modalTextColor: 'text-slate-200',
+    inputClasses: 'flex-grow p-2 text-lg bg-white/5 border border-white/20 rounded-xl text-slate-200 placeholder-slate-400 text-left focus:outline-none focus:ring-2 focus:ring-cyan-400/70 transition',
+    priceTextClasses: 'text-slate-50 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-slate-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-slate-700 rounded-lg bg-black/20 min-h-[44px]',
+    finalPriceLabelColor: 'text-slate-200',
+    footerClasses: 'bg-black/20 border-t border-slate-700 p-3 text-center',
+    footerLinkClasses: 'text-sky-400 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1587327901383-398579412147?q=80&w=1974&auto=format&fit=crop', // Aurora
+    backgroundOverlay: 'rgba(15, 23, 42, 0.4)',
+  },
+  cartoon: {
+    name: 'מחשבון מצויר',
+    headerColor: '#4a4a4a',
+    presetButtonBg: 'rgba(255, 138, 128, 0.4)',
+    manualButtonBg: 'rgba(128, 222, 234, 0.4)',
+    finalPriceColor: '#d32f2f',
+    resetButtonBg: 'rgba(239, 154, 154, 0.4)',
+    bodyBg: 'bg-[#fdfaef]',
+    containerBg: 'bg-[#fffde7]',
+    font: 'font-assistant',
+    buttonClasses: 'border border-white/30 shadow-lg rounded-lg transform active:scale-95 transition-transform backdrop-blur-md text-white font-bold hover:brightness-110 [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]',
+    numpadClasses: 'bg-white/20 hover:bg-white/40 border border-white/40 text-gray-800 active:bg-gray-200/50 shadow-md rounded-lg backdrop-blur-md font-semibold',
+    priceDisplayClasses: 'border-2 border-gray-400 bg-white/30 backdrop-blur-md rounded-lg',
+    headerClasses: 'font-extrabold',
+    iconClasses: "p-2 text-gray-600 hover:text-gray-900",
+    modalBg: 'bg-white/80 backdrop-blur-md',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border border-gray-300 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white/50',
+    priceTextClasses: 'text-gray-800 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50 min-h-[44px]',
+    finalPriceLabelColor: 'text-gray-800',
+    footerClasses: 'bg-amber-100 border-t border-amber-200 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=2070&auto=format&fit=crop', // Colorful gradient
+    backgroundOverlay: 'rgba(255, 253, 231, 0.3)',
+  },
+  pencilSketch: {
+    name: 'סקיצת עיפרון',
+    headerColor: '#4a4e69',
+    presetButtonBg: 'rgba(255, 202, 58, 0.3)',
+    manualButtonBg: 'rgba(138, 201, 38, 0.3)',
+    finalPriceColor: '#d00000',
+    resetButtonBg: 'rgba(255, 89, 94, 0.3)',
+    bodyBg: 'bg-[#f4f1de]',
+    containerBg: 'bg-[#fefae0]',
+    font: 'font-patrick-hand',
+    buttonClasses: 'rounded-lg transition-transform active:scale-95 text-gray-800 font-bold bg-white/10 hover:bg-white/30 backdrop-blur-md',
+    numpadClasses: 'bg-gray-200/20 hover:bg-gray-200/50 rounded-lg transition-transform active:scale-95 text-gray-800 font-bold backdrop-blur-md',
+    priceDisplayClasses: 'bg-[#dee2e6]/50 rounded-lg font-mono backdrop-blur-md',
+    headerClasses: 'font-bold text-4xl',
+    buttonBorderStyle: {
+      borderStyle: 'solid',
+      borderWidth: '4px',
+      borderImageSlice: 10,
+      borderImageRepeat: 'round',
+      borderImageSource: `url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNIDUgNiBDIDE1IDMgMzAgOCA0MCA1IDUwIDIgNjUgNyA3NSA0IDg1IDEgOTUgNiA5NiA1IE0gOTUgNSBDIDk4IDE1IDkzIDMwIDk2IDQwIDk5IDUwIDk0IDY1IDk3IDc1IDEwMCA4NSA5NSA5NSA5NSA5NiBNIDk2IDk1IEMgODUgOTggNzAgOTMgNjAgOTYgNTAgOTkgMzUgOTQgMjUgOTcgMTUgMTAwIDUgOTUgNCA5NSBNIDUgOTYgQyAyIDg1IDcgNzAgNCA2MCAxIDUwIDYgMzUgMyAyNSAwIDE1IDUgNSA1IDQgTSA3IDggQyAxNyA1IDMyIDEwIDQyIDcgNTIgNCA2NyA5IDc3IDYgODcgMyA5NyA4IDk4IDcgTSA5NyA3IEMgMTAwIDE3IDk1IDMyIDk4IDQyIDEwMSA1MiA5NiA2NyA5OSA3NyAxMDIgODcgOTcgOTcgOTcgOTggTSA5OCA5NyBDIDg3IDEwMCA3MiA5NSA2MiA5OCA1MiAxMDEgMzcgOTYgMjcgOTkgMTcgMTAyIDcgOTcgNiA5NyBNIDcgOTggQyA0IDg3IDkgNzIgNiA2MiAzIDUyIDggMzcgNSAyNyAyIDE3IDcgNyA3IDYiIHN0cm9rZT0iIzQ5NTE1NSIgc3Ryb2tlLXdpZHRoPSIxLjgiIGZpbGw9Im5vbmUiLz48L3N2Zz4=')`,
+      boxShadow: '2px 2px 0px 0px rgba(0,0,0,0.15)',
+    },
+    iconClasses: "p-2 text-gray-600 hover:text-gray-900",
+    modalBg: 'bg-[#fefae0]/80 backdrop-blur-sm',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border border-gray-300 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white/50',
+    priceTextClasses: 'text-gray-800 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50 min-h-[44px]',
+    finalPriceLabelColor: 'text-gray-800',
+    footerClasses: 'bg-amber-100 border-t border-amber-200 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1593435713507-b39675a3594e?q=80&w=1935&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(254, 250, 224, 0.2)',
+  },
+  night: {
+    name: 'לילה',
+    headerColor: '#f1f5f9',
+    presetButtonBg: 'rgba(5, 150, 105, 0.3)',
+    manualButtonBg: 'rgba(109, 40, 217, 0.3)',
+    finalPriceColor: '#22d3ee',
+    resetButtonBg: 'rgba(190, 18, 60, 0.3)',
+    bodyBg: 'bg-slate-900',
+    containerBg: 'bg-slate-800/80',
+    font: 'font-assistant',
+    buttonClasses: 'transition-all rounded-lg shadow-lg shadow-black/30 backdrop-blur-md border border-white/10 hover:bg-white/10 text-white',
+    numpadClasses: 'bg-slate-700/30 hover:bg-slate-700/50 border border-slate-600/70 text-white active:bg-slate-600/50 rounded-lg backdrop-blur-md shadow-md',
+    priceDisplayClasses: 'border border-slate-600 bg-slate-900/40 text-white rounded-lg backdrop-blur-md',
+    headerClasses: 'font-bold text-slate-100',
+    iconClasses: "p-2 text-slate-300 hover:text-white",
+    modalBg: 'bg-slate-800/80 backdrop-blur-md',
+    modalTextColor: 'text-slate-100',
+    inputClasses: 'flex-grow p-2 text-lg bg-slate-700/70 border border-slate-600 text-white rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-sky-500',
+    priceTextClasses: 'text-white w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-slate-600 rounded-lg bg-slate-900/70 min-h-[44px]',
+    finalPriceLabelColor: 'text-slate-100',
+    footerClasses: 'bg-slate-900 border-t border-slate-700 p-3 text-center',
+    footerLinkClasses: 'text-sky-400 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1472552944129-b035e9ea3744?q=80&w=2070&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(30, 41, 59, 0.4)',
+  },
+  sleek: {
+    name: 'אלגנטי',
+    headerColor: '#1f2937',
+    presetButtonBg: 'rgba(255, 255, 255, 0.15)',
+    presetButtonTextColor: '#374151',
+    manualButtonBg: 'rgba(37, 99, 235, 0.25)',
+    manualButtonTextColor: '#FFFFFF',
+    finalPriceColor: '#1e40af',
+    resetButtonBg: 'rgba(75, 85, 99, 0.25)',
+    resetButtonTextColor: '#FFFFFF',
+    bodyBg: 'bg-slate-50',
+    containerBg: 'bg-white/50',
+    font: 'font-assistant',
+    buttonClasses: 'rounded-lg shadow-lg border border-white/40 transition-all transform hover:-translate-y-px active:translate-y-0 backdrop-blur-md hover:brightness-110',
+    numpadClasses: 'bg-white/15 hover:bg-white/30 border border-white/40 text-gray-800 active:bg-white/40 rounded-lg shadow-md backdrop-blur-md font-semibold',
+    priceDisplayClasses: 'bg-white/20 border-b-2 border-gray-200/50 rounded-t-lg backdrop-blur-md',
+    headerClasses: 'font-semibold tracking-wide',
+    iconClasses: "p-2 text-gray-600 hover:text-gray-900",
+    modalBg: 'bg-white/70 backdrop-blur-md',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border border-gray-300/70 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white/40',
+    priceTextClasses: 'text-gray-800 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-gray-200/80 rounded-lg bg-gray-50/40 min-h-[44px] backdrop-blur-sm',
+    finalPriceLabelColor: 'text-gray-800',
+    footerClasses: 'bg-amber-100 border-t border-amber-200 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1617994392138-d6b96f1a8d79?q=80&w=1974&auto=format&fit=crop', // Dark abstract waves
+    backgroundOverlay: 'rgba(248, 250, 252, 0.1)',
+  },
+  retro: {
+    name: 'רטרו',
+    headerColor: '#433434',
+    presetButtonBg: 'rgba(225, 112, 85, 0.4)',
+    manualButtonBg: 'rgba(0, 184, 148, 0.4)',
+    finalPriceColor: '#0984e3',
+    resetButtonBg: 'rgba(253, 203, 110, 0.4)',
+    bodyBg: 'bg-[#fdf6e3]',
+    containerBg: 'bg-[#eee8d5]/80',
+    font: 'font-assistant',
+    buttonClasses: 'border-b-4 border-black/20 rounded-md active:border-b-2 font-bold text-white backdrop-blur-md transition-all hover:brightness-110',
+    numpadClasses: 'bg-black/5 hover:bg-black/15 border-b-4 border-black/20 text-black active:bg-gray-400/50 rounded-md backdrop-blur-md transition-colors',
+    priceDisplayClasses: 'border-2 border-[#586e75] bg-black/5 font-mono text-black rounded-sm backdrop-blur-md',
+    headerClasses: 'font-bold tracking-wider',
+    iconClasses: "p-2 text-gray-600 hover:text-gray-900",
+    modalBg: 'bg-[#eee8d5]/80 backdrop-blur-md',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border border-gray-500 rounded-sm text-left focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white/30',
+    priceTextClasses: 'text-black w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-700 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-gray-500 rounded-sm bg-gray-300/50 min-h-[44px] backdrop-blur-sm',
+    finalPriceLabelColor: 'text-black',
+    footerClasses: 'bg-amber-100 border-t border-amber-200 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1519790933221-399331e973e3?q=80&w=1974&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(238, 232, 213, 0.2)',
+  },
+  nature: {
+    name: 'טבע',
+    headerColor: '#1e4620',
+    presetButtonBg: 'rgba(85, 166, 48, 0.25)',
+    manualButtonBg: 'rgba(128, 185, 24, 0.25)',
+    finalPriceColor: '#386641',
+    resetButtonBg: 'rgba(163, 177, 138, 0.25)',
+    bodyBg: 'bg-[#f2f2f2]',
+    containerBg: 'bg-[#fefcfb]/70',
+    font: 'font-assistant',
+    buttonClasses: 'transition-all rounded-full shadow-lg hover:shadow-xl hover:brightness-110 border border-white/30 transform active:scale-95 backdrop-blur-lg text-white font-bold [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]',
+    numpadClasses: 'bg-white/10 hover:bg-white/30 border border-white/30 text-green-900 active:bg-green-200/50 rounded-full shadow-inner backdrop-blur-lg font-semibold transition-colors',
+    priceDisplayClasses: 'border-0 bg-white/20 rounded-lg backdrop-blur-lg',
+    headerClasses: 'font-bold',
+    iconClasses: "p-2 text-gray-600 hover:text-gray-900",
+    modalBg: 'bg-[#fefcfb]/80 backdrop-blur-md',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border border-gray-300 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white/40',
+    priceTextClasses: 'text-gray-800 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50/50 min-h-[44px] backdrop-blur-sm',
+    finalPriceLabelColor: 'text-gray-800',
+    footerClasses: 'bg-amber-100 border-t border-amber-200 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=2070&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(254, 252, 251, 0.1)',
+  },
+  energetic: {
+    name: 'אנרגטי',
+    headerColor: '#e11d48',
+    presetButtonBg: 'rgba(139, 92, 246, 0.3)',
+    manualButtonBg: 'rgba(249, 115, 22, 0.3)',
+    finalPriceColor: '#0891b2',
+    resetButtonBg: 'rgba(239, 68, 68, 0.3)',
+    bodyBg: 'bg-gray-100',
+    containerBg: 'bg-white/60',
+    font: 'font-assistant',
+    buttonClasses: 'transition-all active:scale-95 rounded-xl shadow-lg font-bold backdrop-blur-lg border border-white/30 text-white hover:brightness-110 [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]',
+    numpadClasses: 'bg-white/20 hover:bg-white/40 backdrop-blur-lg border-2 border-white/30 text-gray-800 active:bg-yellow-200/50 font-bold rounded-xl transition-colors',
+    priceDisplayClasses: 'border-b-4 border-rose-400/50 bg-white/30 backdrop-blur-lg rounded-t-lg',
+    headerClasses: 'font-extrabold tracking-tight',
+    iconClasses: "p-2 text-gray-600 hover:text-gray-900",
+    modalBg: 'bg-white/70 backdrop-blur-lg',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border border-gray-300 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-sky-500 bg-white/50',
+    priceTextClasses: 'text-gray-800 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-gray-200 rounded-lg bg-gray-50/60 min-h-[44px] backdrop-blur-sm',
+    finalPriceLabelColor: 'text-gray-800',
+    footerClasses: 'bg-amber-100 border-t border-amber-200 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?q=80&w=2071&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(255, 255, 255, 0.15)',
+  },
+  kids: {
+    name: 'ילדודס',
+    headerColor: '#d946ef', // fuchsia-600
+    presetButtonBg: 'rgba(249, 115, 22, 0.4)',
+    manualButtonBg: 'rgba(132, 204, 22, 0.4)',
+    finalPriceColor: '#22d3ee', // cyan-400
+    resetButtonBg: 'rgba(239, 68, 68, 0.4)',
+    bodyBg: 'bg-[#fef9c3]', // yellow-50
+    containerBg: 'bg-[#fde047]/80',
+    font: 'font-patrick-hand',
+    buttonClasses: 'rounded-2xl shadow-lg border-2 border-white/40 text-white font-bold transform active:scale-95 transition-all hover:brightness-110 backdrop-blur-md',
+    numpadClasses: 'bg-white/30 hover:bg-white/50 border-2 border-gray-400/50 text-gray-800 active:bg-gray-200 shadow-sm rounded-2xl font-bold transition-colors backdrop-blur-md',
+    priceDisplayClasses: 'border-4 border-fuchsia-400/70 bg-white/40 rounded-xl backdrop-blur-md',
+    headerClasses: 'font-extrabold text-4xl tracking-wider',
+    iconClasses: "p-2 text-gray-700 hover:text-fuchsia-600",
+    modalBg: 'bg-yellow-200/90 backdrop-blur-sm',
+    modalTextColor: 'text-gray-800',
+    inputClasses: 'flex-grow p-2 text-lg border-2 border-gray-400 rounded-lg text-left focus:outline-none focus:ring-2 focus:ring-lime-500 bg-white/70',
+    priceTextClasses: 'text-gray-800 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-gray-500 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border-2 border-gray-300 rounded-lg bg-white/50 min-h-[44px]',
+    finalPriceLabelColor: 'text-gray-800',
+    footerClasses: 'bg-orange-200 border-t border-orange-300 p-3 text-center',
+    footerLinkClasses: 'text-blue-700 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1596722742799-522be58a264a?q=80&w=1964&auto=format&fit=crop', // Doodles
+    backgroundOverlay: 'rgba(253, 224, 71, 0.25)',
+  },
+  underwater: {
+    name: 'מצולות',
+    headerColor: '#67e8f9', // cyan-300
+    presetButtonBg: 'rgba(20, 83, 45, 0.4)',
+    manualButtonBg: 'rgba(2, 44, 34, 0.6)',
+    finalPriceColor: '#fde047', // yellow-300
+    resetButtonBg: 'rgba(127, 29, 29, 0.4)',
+    bodyBg: 'bg-[#0c1427]', // very dark blue
+    containerBg: 'bg-[#081734]/70 backdrop-blur-lg',
+    font: 'font-inter',
+    buttonClasses: 'rounded-full shadow-lg border border-cyan-400/30 text-cyan-100 bg-cyan-900/30 hover:bg-cyan-900/50 active:scale-95 transition-all duration-150 backdrop-blur-md',
+    numpadClasses: 'bg-cyan-950/30 border border-cyan-700/40 text-slate-200 rounded-full shadow-md hover:bg-cyan-950/60 active:scale-95 active:bg-cyan-950/70 transition-all duration-150 backdrop-blur-md',
+    priceDisplayClasses: 'bg-slate-950/40 border border-slate-700 rounded-xl backdrop-blur-md',
+    headerClasses: 'font-bold text-cyan-200 tracking-wide',
+    iconClasses: "p-2 text-cyan-300 hover:text-white transition-colors",
+    modalBg: 'bg-slate-900/80 backdrop-blur-md',
+    modalTextColor: 'text-slate-200',
+    inputClasses: 'flex-grow p-2 text-lg bg-black/20 border border-cyan-700/50 rounded-full text-slate-200 placeholder-slate-400 text-left focus:outline-none focus:ring-2 focus:ring-cyan-400/70 transition px-4',
+    priceTextClasses: 'text-slate-50 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-slate-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-slate-700 rounded-lg bg-black/20 min-h-[44px]',
+    finalPriceLabelColor: 'text-slate-200',
+    footerClasses: 'bg-black/20 border-t border-slate-700 p-3 text-center',
+    footerLinkClasses: 'text-cyan-400 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1535443274393-9c1d48005a87?q=80&w=2070&auto=format&fit=crop', // jellyfish
+    backgroundOverlay: 'rgba(8, 23, 52, 0.5)',
+  },
+  water: {
+    name: 'מים',
+    headerColor: '#f0f9ff',
+    presetButtonBg: 'rgba(255, 255, 255, 0.15)',
+    manualButtonBg: 'rgba(255, 255, 255, 0.25)',
+    finalPriceColor: '#ffffff',
+    resetButtonBg: 'rgba(56, 189, 248, 0.4)',
+    resetButtonTextColor: '#f0f9ff',
+    bodyBg: 'bg-slate-100',
+    containerBg: '',
+    font: 'font-assistant',
+    buttonClasses: 'rounded-full shadow-lg border border-white/30 text-white font-bold transition-all duration-150 active:scale-95 backdrop-blur-lg hover:bg-white/10 [text-shadow:0_1px_2px_rgba(0,0,0,0.3)]',
+    numpadClasses: 'rounded-full shadow-lg border border-white/30 text-white font-bold transition-all duration-150 active:scale-95 backdrop-blur-lg bg-white/15 hover:bg-white/25 [text-shadow:0_1px_2px_rgba(0,0,0,0.3)]',
+    priceDisplayClasses: 'bg-black/10 border-b border-white/20 rounded-xl backdrop-blur-lg',
+    headerClasses: 'font-bold tracking-wide text-white [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]',
+    iconClasses: "p-2 text-white/80 hover:text-white transition-colors",
+    modalBg: 'bg-sky-800/80 backdrop-blur-lg',
+    modalTextColor: 'text-sky-100',
+    inputClasses: 'flex-grow p-2 text-lg bg-white/10 border border-white/30 rounded-full text-white placeholder-white/60 text-left focus:outline-none focus:ring-2 focus:ring-sky-300 transition px-4',
+    priceTextClasses: 'text-white w-full text-right pl-24 [text-shadow:0_1px_2px_rgba(0,0,0,0.3)]',
+    pricePlaceholderClasses: 'text-white/70 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-sky-200/20 rounded-lg bg-black/10 min-h-[44px] backdrop-blur-sm',
+    finalPriceLabelColor: 'text-sky-100 [text-shadow:0_1px_3px_rgba(0,0,0,0.4)]',
+    footerClasses: 'bg-sky-900/50 border-t border-sky-700/50 p-3 text-center',
+    footerLinkClasses: 'text-sky-300 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1552083375-1447ce886485?q=80&w=2070&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(14, 116, 144, 0.15)',
+    finalPriceTextGlowStyle: {
+        textShadow: '0 0 8px rgba(255, 255, 255, 0.5), 0 1px 3px rgba(0,0,0,0.4)'
+    },
+  },
+  deepSea: {
+    name: 'מצולות עמוקות',
+    headerColor: '#93c5fd', 
+    presetButtonBg: 'rgba(76, 29, 149, 0.4)',
+    presetButtonTextColor: '#e0e7ff',
+    manualButtonBg: 'rgba(23, 37, 84, 0.6)',
+    manualButtonTextColor: '#e0e7ff',
+    finalPriceColor: '#34d399',
+    resetButtonBg: 'rgba(159, 18, 57, 0.5)',
+    resetButtonTextColor: '#fce7f3',
+    bodyBg: 'bg-[#0b0f19]',
+    containerBg: 'bg-[#1e293b]/50 backdrop-blur-xl',
+    font: 'font-inter',
+    buttonClasses: 'rounded-xl shadow-lg border border-purple-400/20 text-indigo-100 bg-indigo-900/40 hover:bg-indigo-900/60 hover:shadow-purple-500/50 active:scale-95 transition-all duration-200 backdrop-blur-md',
+    numpadClasses: 'bg-slate-900/40 border border-blue-600/30 text-slate-200 rounded-xl shadow-md hover:bg-slate-800/60 hover:shadow-blue-400/40 active:scale-95 transition-all duration-200 backdrop-blur-md',
+    priceDisplayClasses: 'bg-black/50 border border-slate-700 rounded-xl backdrop-blur-md',
+    headerClasses: 'font-bold text-blue-300 tracking-wide',
+    finalPriceTextGlowStyle: {
+        textShadow: '0 0 8px #34d399, 0 0 12px #34d399'
+    },
+    iconClasses: "p-2 text-blue-300 hover:text-white hover:bg-blue-500/20 rounded-full transition-colors",
+    modalBg: 'bg-slate-900/80 backdrop-blur-md',
+    modalTextColor: 'text-slate-200',
+    inputClasses: 'flex-grow p-2 text-lg bg-black/30 border border-purple-600/50 rounded-xl text-slate-200 placeholder-slate-400 text-left focus:outline-none focus:ring-2 focus:ring-purple-400/70 transition',
+    priceTextClasses: 'text-slate-50 w-full text-right pl-24',
+    pricePlaceholderClasses: 'text-slate-400 w-full text-right text-lg pl-24',
+    appliedDiscountsContainerClasses: 'flex flex-wrap items-center gap-2 p-2 border border-slate-700 rounded-lg bg-black/30 min-h-[44px]',
+    finalPriceLabelColor: 'text-slate-200',
+    footerClasses: 'bg-black/30 border-t border-slate-700 p-3 text-center',
+    footerLinkClasses: 'text-purple-400 font-semibold hover:underline',
+    backgroundImage: 'https://images.unsplash.com/photo-1536532184021-da5392b55da1?q=80&w=2070&auto=format&fit=crop',
+    backgroundOverlay: 'rgba(15, 23, 42, 0.6)',
+  },
+};
+
+type ThemeName = keyof typeof themes;
+
+type HistoryEntry = {
+  id: string;
+  originalPrice: number;
+  appliedDiscounts: number[];
+  finalPrice: number;
+  timestamp: number;
+};
+
+// --- Helper Functions ---
+const getFromLocalStorage = <T,>(key: string, defaultValue: T): T => {
+    try {
+      const saved = localStorage.getItem(key);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      return defaultValue;
+    } catch (error) {
+      console.error(`Could not read from localStorage key "${key}":`, error);
+      return defaultValue;
+    }
+};
+
+// FIX: Corrected the malformed try-catch block in saveToLocalStorage.
+const saveToLocalStorage = (key: string, value: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.error(`Could not save to localStorage key "${key}":`, error);
+    }
+};
+
+
+// --- Tutorial Component ---
+const tutorialSteps = [
+    {
+        selector: '#preset-discounts',
+        title: 'ברוכים הבאים!',
+        text: 'נתחיל מהכיף! לחצו על אחוזי הנחה נפוצים כדי להוסיף אותם במהירות לחישוב.',
+        position: 'bottom',
+    },
+    {
+        selector: '#manual-discount-section',
+        title: 'הנחה ידנית',
+        text: 'צריכים הנחה ספציפית? הזינו אותה כאן ולחצו על "הוספה".',
+        position: 'bottom',
+    },
+    {
+        selector: '#applied-discounts-area',
+        title: 'הקסם של האפליקציה',
+        text: 'כאן הייחודיות שלנו! ניתן לשלב מספר הנחות והאפליקציה מחשבת אותן בסדר רציף. למשל, 80% הנחה ואז 30% נוספים יחושבו מהיתרה.',
+        position: 'top',
+    },
+    {
+        selector: '#price-display',
+        title: 'הזנת המחיר המקורי',
+        text: 'עכשיו, הזינו את המחיר המקורי של המוצר.',
+        position: 'bottom',
+    },
+    {
+        selector: '#numpad-grid',
+        title: 'שימוש במקלדת',
+        text: 'השתמשו במקשים אלה כדי להזין את המחיר.',
+        position: 'top',
+    },
+    {
+        selector: '#final-price-display',
+        title: 'המחיר הסופי',
+        text: 'וכאן, תראו את המחיר הסופי לאחר כל ההנחות שהופעלו.',
+        position: 'top',
+    },
+    {
+        selector: '#reset-button',
+        title: 'איפוס ושמירה',
+        text: 'בסיום, לחצו כאן כדי לאפס את המחשבון. החישוב יישמר אוטומטית בהיסטוריה.',
+        position: 'top',
+    },
+    {
+        selector: '#history-button',
+        title: 'היסטוריית חישובים',
+        text: 'רוצים לראות חישובים קודמים? לחצו כאן כדי לפתוח את ההיסטוריה.',
+        position: 'bottom',
+    },
+    {
+        selector: '#voice-button',
+        title: 'הזנה קולית',
+        text: 'לנוחיותכם, ניתן גם להזין את המחיר באמצעות הקול על ידי לחיצה כאן.',
+        position: 'bottom'
+    },
+];
+
+const Tutorial: React.FC<{onFinish: () => void}> = ({ onFinish }) => {
+    const [stepIndex, setStepIndex] = useState(0);
+    const [elementRect, setElementRect] = useState<DOMRect | null>(null);
+    const [isVisible, setIsVisible] = useState(false);
+    const step = tutorialSteps[stepIndex];
+
+    useEffect(() => {
+        const timer = setTimeout(() => setIsVisible(true), 10);
+        return () => clearTimeout(timer);
+    }, []);
+
+    useEffect(() => {
+        const calculateRect = () => {
+            try {
+                const element = document.querySelector(step.selector);
+                if (element) {
+                    setElementRect(element.getBoundingClientRect());
+                } else {
+                    if (stepIndex < tutorialSteps.length -1) {
+                       setStepIndex(s => s + 1);
+                    } else {
+                       onFinish();
+                    }
+                }
+            } catch (e) {
+                console.error("Tutorial element not found:", step.selector);
+                onFinish();
+            }
+        };
+        
+        calculateRect();
+
+        window.addEventListener('resize', calculateRect);
+        return () => {
+            window.removeEventListener('resize', calculateRect);
+        };
+
+    }, [stepIndex, step.selector, onFinish]);
+    
+    const tooltipStyle: React.CSSProperties = {
+        transition: 'all 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+        opacity: elementRect ? 1 : 0,
+        pointerEvents: elementRect ? 'auto' : 'none',
+    };
+
+    if (elementRect) {
+        if (step.position === 'bottom') {
+            tooltipStyle.top = `${elementRect.bottom + 10}px`;
+            tooltipStyle.left = `${elementRect.left + elementRect.width / 2}px`;
+            tooltipStyle.transform = 'translateX(-50%)';
+        } else if (step.position === 'top') {
+            tooltipStyle.bottom = `${window.innerHeight - elementRect.top + 10}px`;
+            tooltipStyle.left = `${elementRect.left + elementRect.width / 2}px`;
+            tooltipStyle.transform = 'translateX(-50%)';
+        }
+    } else {
+        tooltipStyle.top = '50%';
+        tooltipStyle.left = '50%';
+        tooltipStyle.transform = 'translate(-50%, -50%) scale(0.95)';
+    }
+
+    const clipPathValue = elementRect
+        ? `polygon(
+            0% 0%, 0% 100%, 100% 100%, 100% 0%, 0% 0%,
+            ${elementRect.x}px ${elementRect.y}px,
+            ${elementRect.x + elementRect.width}px ${elementRect.y}px,
+            ${elementRect.x + elementRect.width}px ${elementRect.y + elementRect.height}px,
+            ${elementRect.x}px ${elementRect.y + elementRect.height}px,
+            ${elementRect.x}px ${elementRect.y}px
+        )`
+        : 'polygon(0% 0%, 0% 100%, 100% 100%, 100% 0%, 0% 0%)';
+
+    return (
+        <div className={`fixed inset-0 z-[100] transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`}>
+            <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                style={{
+                    clipPath: clipPathValue,
+                    transition: 'clip-path 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+                }}
+            ></div>
+            
+            <div style={tooltipStyle} className="absolute z-[101] w-64 p-4 bg-white rounded-lg shadow-xl text-gray-800 font-assistant">
+                <span className="absolute top-3 left-3 text-xs font-mono text-gray-400">{stepIndex + 1} / {tutorialSteps.length}</span>
+                <h3 className="font-bold text-lg mb-2 pt-2">{step.title}</h3>
+                <p className="text-sm">{step.text}</p>
+                <div className="flex justify-between items-center mt-4">
+                    <button onClick={onFinish} className="text-xs text-gray-500 hover:underline">דלג</button>
+                    <div className="flex items-center gap-2">
+                       {stepIndex > 0 && (
+                         <button onClick={() => setStepIndex(s => s - 1)} className="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">הקודם</button>
+                       )}
+                       {stepIndex < tutorialSteps.length - 1 ? (
+                         <button onClick={() => setStepIndex(s => s + 1)} className="px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600">הבא</button>
+                       ) : (
+                         <button onClick={onFinish} className="px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600">סיום</button>
+                       )}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+// --- Main Application Component ---
+
+const App: React.FC = () => {
+  const [priceStr, setPriceStr] = useState<string>('');
+  const [manualDiscountStr, setManualDiscountStr] = useState<string>('');
+  const [discounts, setDiscounts] = useState<{ id: number; value: number; active: boolean }[]>([]);
+  const [nextId, setNextId] = useState(1);
+  
+  const [theme, setThemeState] = useState<ThemeName>(() => getFromLocalStorage('calculator-theme', 'default'));
+  const [history, setHistory] = useState<HistoryEntry[]>(() => getFromLocalStorage('calculator-history', []));
+  const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-sound-enabled', false));
+  const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-accessibility-enabled', false));
+  const [useImageBackground, setUseImageBackground] = useState<boolean>(() => getFromLocalStorage('calculator-image-background-enabled', true));
+  const [isTutorialActive, setIsTutorialActive] = useState(false);
+  
+  const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [announcement, setAnnouncement] = useState('');
+  const [isListening, setIsListening] = useState(false);
+  const [speakTrigger, setSpeakTrigger] = useState(false);
+  
+  const finalPrice = useMemo(() => {
+    const initialPrice = parseFloat(priceStr) || 0;
+    if (initialPrice === 0) return 0;
+    return discounts.reduce((currentPrice, discount) => {
+      if (discount.active) return currentPrice * (1 - discount.value / 100);
+      return currentPrice;
+    }, initialPrice);
+  }, [priceStr, discounts]);
+
+  const longPressTimerRef = useRef<number | null>(null);
+  const rapidDeleteIntervalRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const recognitionRef = useRef<any | null>(null);
+
+  useEffect(() => {
+    const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
+    if (!hasSeenTutorial) {
+      setTimeout(() => setIsTutorialActive(true), 500);
+    }
+  }, []);
+  
+  const currentTheme = themes[theme];
+
+  useEffect(() => {
+    if (theme === 'default') {
+        document.body.className = 'theme-modern';
+    } else {
+        document.body.className = 'bg-gray-100'; // Restore default for other themes
+    }
+  }, [theme]);
+
+  const finishTutorial = () => {
+    setIsTutorialActive(false);
+    saveToLocalStorage('calculator-tutorial-seen', true);
+  };
+
+  useEffect(() => { saveToLocalStorage('calculator-history', history); }, [history]);
+  useEffect(() => { saveToLocalStorage('calculator-theme', theme); }, [theme]);
+  useEffect(() => { saveToLocalStorage('calculator-sound-enabled', isSoundEnabled); }, [isSoundEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-accessibility-enabled', isAccessibilityEnabled); }, [isAccessibilityEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
+  
+  useEffect(() => {
+    if (isAccessibilityEnabled && priceStr) {
+      const finalPriceValue = finalPrice;
+      const timer = setTimeout(() => {
+        const formattedPrice = finalPriceValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        setAnnouncement(`המחיר הסופי הוא ${formattedPrice} שקלים`);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [priceStr, discounts, isAccessibilityEnabled, finalPrice]);
+  
+  useEffect(() => {
+    if (speakTrigger) {
+        window.speechSynthesis.cancel();
+        const formattedPrice = finalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const utterance = new SpeechSynthesisUtterance(`המחיר הסופי הוא ${formattedPrice}`);
+        utterance.lang = 'he-IL';
+        window.speechSynthesis.speak(utterance);
+        setSpeakTrigger(false);
+    }
+  }, [speakTrigger, finalPrice]);
+
+  const setTheme = (newTheme: ThemeName) => setThemeState(newTheme);
+  
+  const triggerVibration = () => {
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  };
+
+  const playClickSound = () => {
+    if (!isSoundEnabled) return;
+    if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const audioContext = audioContextRef.current;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.05);
+  };
+  
+  const executeWithFeedback = (fn: Function) => {
+    return (...args: any[]) => {
+      triggerVibration();
+      playClickSound();
+      fn(...args);
+    };
+  };
+
+  const presetDiscounts = [80, 70, 60, 50, 40, 30, 20, 10];
+  const numpadLayout = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'];
+  
+  const currentMonth = new Date().toLocaleString('he-IL', { month: 'long' });
+
+  const adUnitCode = `<div style="text-align:center; padding: 16px; color: #555; background-color: #e0e0e0; font-size: 14px;">שטח המיועד לפרסומת באנר</div>`;
+  
+  const handleNumpadInput = (value: string) => {
+    if (value === '⌫') {
+      setPriceStr(current => current.slice(0, -1));
+    } else if (value === '.') {
+      if (!priceStr.includes('.')) {
+        setPriceStr(current => (current === '' ? '0.' : current + '.'));
+      }
+    } else {
+        if(priceStr.replace(/[.,]/g, '').length < 9) {
+            setPriceStr(current => current + value);
+        }
+    }
+  };
+  const handleNumpad = executeWithFeedback(handleNumpadInput);
+  
+  const handleBackspacePress = () => {
+    handleNumpad('⌫');
+    longPressTimerRef.current = window.setTimeout(() => {
+        rapidDeleteIntervalRef.current = window.setInterval(() => {
+            handleNumpadInput('⌫');
+        }, 80);
+    }, 500);
+  };
+
+  const handleBackspaceRelease = () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    if (rapidDeleteIntervalRef.current) clearInterval(rapidDeleteIntervalRef.current);
+  };
+
+  const addDiscount = (value: number) => {
+    if (isNaN(value) || value < 0 || value > 100) return;
+    setDiscounts(current => [...current, { id: nextId, value, active: true }]);
+    setNextId(prev => prev + 1);
+  };
+  const addDiscountWithFeedback = executeWithFeedback(addDiscount);
+  
+  const handleManualDiscountAdd = () => {
+    const value = parseFloat(manualDiscountStr);
+    addDiscount(value);
+    setManualDiscountStr('');
+  };
+  const handleManualDiscountAddWithFeedback = executeWithFeedback(handleManualDiscountAdd);
+  
+  const handleManualDiscountKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') handleManualDiscountAddWithFeedback();
+  };
+  
+  const toggleDiscount = (id: number) => {
+    setDiscounts(current => current.map(d => (d.id === id ? { ...d, active: !d.active } : d)));
+  };
+
+  const removeDiscount = (id: number) => {
+    setDiscounts(current => current.filter(d => d.id !== id));
+  };
+  
+  const handleResetCalculationInternal = () => {
+    const originalPrice = parseFloat(priceStr);
+    const activeDiscounts = discounts.filter(d => d.active).map(d => d.value);
+
+    if (originalPrice > 0 && activeDiscounts.length > 0) {
+      const newEntry: HistoryEntry = {
+        id: `calc-${Date.now()}`,
+        originalPrice: originalPrice,
+        appliedDiscounts: activeDiscounts,
+        finalPrice: finalPrice,
+        timestamp: Date.now(),
+      };
+      setHistory(current => [newEntry, ...current]);
+    }
+    setPriceStr('');
+    setDiscounts([]);
+    setManualDiscountStr('');
+  };
+  const handleResetCalculation = executeWithFeedback(handleResetCalculationInternal);
+  
+  const displayPrice = useMemo(() => {
+    if (!priceStr) return '';
+    const [integer, fraction] = priceStr.split('.');
+    const formattedInteger = new Intl.NumberFormat('en-US').format(BigInt(integer || '0'));
+    if (fraction !== undefined) return `${formattedInteger}.${fraction}`;
+    if (priceStr.endsWith('.')) return `${formattedInteger}.`;
+    return formattedInteger;
+  }, [priceStr]);
+
+  const clearPrice = executeWithFeedback(() => setPriceStr(''));
+
+  const renderOverlay = (isOpen: boolean, closeFn: () => void) => isOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={closeFn} aria-hidden="true" />
+  );
+
+  const parseSpokenNumber = (spokenText: string): string => {
+    const cleanedText = spokenText
+      .replace(/נקודה/g, '.')
+      .replace(/ וחצי/g, '.5');
+    const numericPart = cleanedText.match(/[0-9.]+/g);
+    return numericPart ? numericPart.join('') : '';
+  };
+
+  const handleVoiceInput = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const recognition = recognitionRef.current || new SpeechRecognition();
+    recognition.lang = 'he-IL';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event: any) => {
+        console.error('Speech recognition error', event.error);
+        setIsListening(false);
+    };
+    recognition.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        const numberStr = parseSpokenNumber(transcript);
+        if (numberStr) {
+            setPriceStr(numberStr);
+            setSpeakTrigger(true);
+        }
+    };
+    
+    if (!recognitionRef.current) {
+        recognitionRef.current = recognition;
+    }
+    
+    recognition.start();
+  };
+
+  const containerStyle = useImageBackground && (currentTheme as any).backgroundImage ? {
+    backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${(currentTheme as any).backgroundImage})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+  } : {};
+  
+  return (
+    <div className={`flex justify-center ${currentTheme.bodyBg} ${currentTheme.font}`}>
+      {isTutorialActive && <Tutorial onFinish={finishTutorial} />}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
+      {renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false))}
+      {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
+      
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
+            <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
+                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                </div>
+                <div className="flex-grow overflow-y-auto space-y-3 pr-2">
+                    {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
+                        <div key={entry.id} className="p-4 rounded-lg bg-black/10 border border-white/10">
+                            <p className="text-xs text-gray-400 mb-2">{new Date(entry.timestamp).toLocaleString('he-IL')}</p>
+                            <p className="text-sm text-gray-300">מחיר מקורי: <span className="font-semibold text-white">{entry.originalPrice.toLocaleString('he-IL')} ₪</span></p>
+                            <p className="text-sm text-gray-300">הנחות: <span className="font-semibold text-white">{entry.appliedDiscounts.join('%, ')}%</span></p>
+                            <p className="text-lg font-bold mt-1" style={{ color: currentTheme.finalPriceColor }}>מחיר סופי: {entry.finalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₪</p>
+                        </div>
+                    ))}
+                </div>
+                {history.length > 0 && (
+                    <div className="mt-4"><button onClick={() => { if (window.confirm('האם אתה בטוח?')) { setHistory([]); }}} className={`w-full py-3 font-semibold text-white rounded-lg ${currentTheme.buttonClasses}`} style={{ backgroundColor: currentTheme.resetButtonBg, color: (currentTheme as any).resetButtonTextColor || 'white' }}>נקה היסטוריה</button></div>
+                )}
+            </div>
+        </div>
+      )}
+      
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
+          <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+              <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            <div className={`space-y-6 ${currentTheme.modalTextColor}`}>
+              <label htmlFor="sound-toggle" className="flex items-center justify-between cursor-pointer">
+                <span className="font-semibold">צלילי לחיצה</span>
+                <div className="relative"><input type="checkbox" id="sound-toggle" className="sr-only" checked={isSoundEnabled} onChange={() => setIsSoundEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isSoundEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isSoundEnabled ? 'translate-x-6' : ''}`}></div></div>
+              </label>
+              <label htmlFor="image-bg-toggle" className="flex items-center justify-between cursor-pointer">
+                <span className="font-semibold">רקע תמונה</span>
+                <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
+              </label>
+              <label htmlFor="accessibility-toggle" className="flex items-center justify-between cursor-pointer">
+                <span className="font-semibold">הקראה לקורא מסך</span>
+                <div className="relative"><input type="checkbox" id="accessibility-toggle" className="sr-only" checked={isAccessibilityEnabled} onChange={() => setIsAccessibilityEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isAccessibilityEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isAccessibilityEnabled ? 'translate-x-6' : ''}`}></div></div>
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div 
+        className={`w-full max-w-[420px] mx-auto flex flex-col h-screen overflow-hidden transition-colors duration-300 ${!((currentTheme as any).backgroundImage && useImageBackground) ? currentTheme.containerBg : ''}`}
+        style={containerStyle}
+      >
+        <header className="relative p-4 text-center mt-4 flex justify-between items-center flex-shrink-0">
+          <div className="absolute top-1/2 left-4 transform -translate-y-1/2 flex items-center gap-1 z-50">
+            <button onClick={() => setIsSettingsOpen(true)} className={currentTheme.iconClasses} aria-label="Open settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg></button>
+            <div className="relative">
+              <button onClick={() => setIsThemeDropdownOpen(prev => !prev)} className={currentTheme.iconClasses} aria-label="Change theme"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" /></svg></button>
+              {isThemeDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-50" onClick={() => setIsThemeDropdownOpen(false)} aria-hidden="true" />
+                  <div className={`absolute top-full left-0 mt-2 w-56 rounded-md shadow-lg p-2 border z-[60] border-gray-200 ${currentTheme.modalBg}`} role="menu">
+                      <div className="space-y-1">{(Object.keys(themes) as ThemeName[]).map(themeKey => (<button key={themeKey} onClick={() => { setTheme(themeKey); setIsThemeDropdownOpen(false); }} className={`w-full text-right p-3 rounded-md transition-colors text-base ${theme === themeKey ? 'bg-sky-500/50 text-sky-100 font-bold' : `hover:bg-black/20 ${currentTheme.modalTextColor}`}`} role="menuitem">{themes[themeKey].name}</button>))}</div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+          <h1 className={`text-3xl w-full ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>מחשבון הנחות</h1>
+          <button id="history-button" onClick={() => setIsHistoryOpen(true)} className={`absolute top-1/2 right-4 transform -translate-y-1/2 ${currentTheme.iconClasses}`} aria-label="View calculation history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+        </header>
+
+
+        <main className="flex-grow p-2 flex flex-col gap-2">
+          <div id="preset-discounts" className="grid grid-cols-8 gap-1.5">
+            {presetDiscounts.map(discount => (<button key={discount} onClick={() => addDiscountWithFeedback(discount)} className={`flex-shrink-0 w-full h-10 flex items-center justify-center p-1 font-semibold ${currentTheme.buttonClasses}`} style={{backgroundColor: currentTheme.presetButtonBg, color: (currentTheme as any).presetButtonTextColor || 'white', ...((currentTheme as any).buttonBorderStyle || {})}}>{discount}%</button>))}
+          </div>
+          <div id="manual-discount-section" className="flex gap-2">
+            <input type="tel" inputMode="decimal" value={manualDiscountStr} onChange={(e) => setManualDiscountStr(e.target.value)} onKeyPress={handleManualDiscountKeyPress} placeholder="% הנחה" className={currentTheme.inputClasses} aria-label="Manual discount percentage"/>
+            <button onClick={handleManualDiscountAddWithFeedback} className={`px-4 py-2 font-semibold hover:opacity-90 active:opacity-80 ${currentTheme.buttonClasses}`} style={{backgroundColor: currentTheme.manualButtonBg, color: (currentTheme as any).manualButtonTextColor || 'white', ...((currentTheme as any).buttonBorderStyle || {})}}>הוספה ידנית</button>
+          </div>
+          
+          <div id="price-display" className={`relative p-2 text-4xl h-14 flex items-center justify-end font-sans ${currentTheme.priceDisplayClasses}`} style={{...((currentTheme as any).buttonBorderStyle || {})}}>
+            <button id="voice-button" onClick={handleVoiceInput} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`} aria-label="הזנת מחיר בקול">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z" clipRule="evenodd" /></svg>
+            </button>
+            {priceStr && (<button onClick={clearPrice} className="absolute left-12 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300" aria-label="Clear price"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
+            {priceStr ? <span className={currentTheme.priceTextClasses}>{displayPrice}</span> : <span className={currentTheme.pricePlaceholderClasses}>הזינו מחיר</span>}
+          </div>
+
+          <div id="applied-discounts-area" className={currentTheme.appliedDiscountsContainerClasses}>
+            {discounts.length > 0 ? (
+              discounts.map((discount, index) => (
+                <div key={discount.id} onClick={() => toggleDiscount(discount.id)} className={`relative flex items-center justify-center p-2 px-3 rounded-md cursor-pointer transition-colors ${discount.active ? 'bg-sky-500/50' : 'bg-gray-500/50'}`}>
+                  <span className={`font-semibold text-sm ${discount.active ? 'text-sky-100' : 'text-gray-200'}`}>{discount.value}%</span>
+                  <button onClick={(e) => { e.stopPropagation(); removeDiscount(discount.id); }} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold" aria-label={`Remove ${discount.value}% discount`}>X</button>
+                  <span className="absolute top-0 left-1 text-xs font-bold text-gray-400">{index + 1}</span>
+                </div>
+              ))
+            ) : (
+              <span className="text-gray-400 text-sm w-full text-center">ההנחות שהוספתם יופיעו כאן</span>
+            )}
+          </div>
+          
+          <div id="final-price-display" className="text-center py-1">
+            <span className={`text-2xl font-bold ${currentTheme.finalPriceLabelColor}`}>מחיר סופי: </span>
+            <span 
+              className="text-3xl font-extrabold" 
+              style={{
+                color: currentTheme.finalPriceColor,
+                ...((currentTheme as any).finalPriceTextGlowStyle || {})
+              }}
+            >
+              {finalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="font-bold"> ₪</span>
+            </span>
+          </div>
+          <button id="reset-button" onClick={handleResetCalculation} className={`w-full text-xl font-bold py-3 hover:opacity-90 active:opacity-80 ${currentTheme.buttonClasses}`} style={{backgroundColor: currentTheme.resetButtonBg, color: (currentTheme as any).resetButtonTextColor || 'white', ...((currentTheme as any).buttonBorderStyle || {})}}>איפוס חישוב</button>
+          <div id="numpad-grid" className="grid grid-cols-3 gap-2 flex-grow">
+             {numpadLayout.map(key => (
+              key === '⌫' ? (
+                <button key={key} onMouseDown={handleBackspacePress} onMouseUp={handleBackspaceRelease} onMouseLeave={handleBackspaceRelease} onTouchStart={handleBackspacePress} onTouchEnd={handleBackspaceRelease} className={`text-3xl h-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors ${currentTheme.numpadClasses}`} aria-label={`Numpad ${key}`} style={{...((currentTheme as any).buttonBorderStyle || {})}}>{key}</button>
+              ) : (
+                <button key={key} onClick={() => handleNumpad(key)} className={`text-3xl h-full flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors ${currentTheme.numpadClasses}`} aria-label={`Numpad ${key}`} style={{...((currentTheme as any).buttonBorderStyle || {})}}>{key}</button>
+              )
+            ))}
+          </div>
+        </main>
+        
+        <footer className="mt-auto flex-shrink-0">
+          <div className={currentTheme.footerClasses}><a href="https://s.click.aliexpress.com/e/_oEcAHoN" target="_blank" rel="noopener noreferrer" className={currentTheme.footerLinkClasses}>🎁 קופונים עדכניים • {currentMonth}</a></div>
+          <div className="bg-gray-200" dangerouslySetInnerHTML={{ __html: adUnitCode }} />
+        </footer>
+      </div>
+    </div>
+  );
+};
+
+// --- END OF FORMER App.tsx CONTENT ---
+
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {

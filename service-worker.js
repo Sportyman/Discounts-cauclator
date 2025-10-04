@@ -4,7 +4,6 @@ const urlsToCache = [
   './',
   './index.html',
   './index.tsx',
-  './App.tsx',
   './manifest.json',
   // You would add other assets here like your main JS bundle, CSS files, etc.
   // For now, these are the essentials for the current setup.
