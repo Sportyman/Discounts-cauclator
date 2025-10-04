@@ -561,16 +561,15 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryEntry[]>(() => getFromLocalStorage('calculator-history', []));
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-sound-enabled', false));
   const [isVibrationEnabled, setIsVibrationEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-vibration-enabled', true));
-  const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-accessibility-enabled', false));
+  const [isVoiceOutputEnabled, setIsVoiceOutputEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-voice-output-enabled', true));
   const [useImageBackground, setUseImageBackground] = useState<boolean>(() => getFromLocalStorage('calculator-image-background-enabled', true));
   const [isTutorialActive, setIsTutorialActive] = useState(false);
   
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [speakTrigger, setSpeakTrigger] = useState<number | null>(null);
+  const [speakTrigger, setSpeakTrigger] = useState<{ price: number; id: number } | null>(null);
   const [hebrewVoice, setHebrewVoice] = useState<SpeechSynthesisVoice | null>(null);
   
   const finalPrice = useMemo(() => {
@@ -586,6 +585,11 @@ const App: React.FC = () => {
   useEffect(() => {
     discountsRef.current = discounts;
   }, [discounts]);
+
+  const isVoiceOutputEnabledRef = useRef(isVoiceOutputEnabled);
+  useEffect(() => {
+    isVoiceOutputEnabledRef.current = isVoiceOutputEnabled;
+  }, [isVoiceOutputEnabled]);
 
   const longPressTimerRef = useRef<number | null>(null);
   const rapidDeleteIntervalRef = useRef<number | null>(null);
@@ -635,30 +639,15 @@ const App: React.FC = () => {
   useEffect(() => { saveToLocalStorage('calculator-theme', theme); }, [theme]);
   useEffect(() => { saveToLocalStorage('calculator-sound-enabled', isSoundEnabled); }, [isSoundEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-vibration-enabled', isVibrationEnabled); }, [isVibrationEnabled]);
-  useEffect(() => { saveToLocalStorage('calculator-accessibility-enabled', isAccessibilityEnabled); }, [isAccessibilityEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-voice-output-enabled', isVoiceOutputEnabled); }, [isVoiceOutputEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
   
   useEffect(() => {
-    if (isAccessibilityEnabled && priceStr) {
-      const finalPriceValue = finalPrice;
-      const timer = setTimeout(() => {
-        const formattedPrice = finalPriceValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        setAnnouncement(`יוצא ${formattedPrice} שקלים`);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [priceStr, discounts, isAccessibilityEnabled, finalPrice]);
-  
-  useEffect(() => {
     if (speakTrigger !== null) {
-        if (isContinuousModeRef.current && recognitionRef.current) {
-            isSpeakingRef.current = true;
-            recognitionRef.current.stop();
-        }
-
+        isSpeakingRef.current = true;
         window.speechSynthesis.cancel();
         
-        const priceToSpeak = speakTrigger;
+        const priceToSpeak = speakTrigger.price;
         
         const isWholeNumber = priceToSpeak % 1 === 0;
         const formattedPriceToSpeak = isWholeNumber 
@@ -675,9 +664,10 @@ const App: React.FC = () => {
 
         utterance.onend = () => {
             isSpeakingRef.current = false;
-            if (isContinuousModeRef.current && recognitionRef.current && !stopListeningUserRequest.current) {
-                recognitionRef.current.start();
-            }
+        };
+
+        utterance.onerror = () => {
+            isSpeakingRef.current = false;
         };
 
         window.speechSynthesis.speak(utterance);
@@ -854,6 +844,8 @@ const App: React.FC = () => {
         };
         
         recognition.onresult = (event: any) => {
+            if (isSpeakingRef.current) return;
+
             let finalTranscript = '';
             for (let i = event.resultIndex; i < event.results.length; ++i) {
                 if (event.results[i].isFinal) {
@@ -870,7 +862,9 @@ const App: React.FC = () => {
                        return currentPrice;
                     }, parseFloat(numberStr) || 0);
 
-                    setSpeakTrigger(tempFinalPrice);
+                    if (isVoiceOutputEnabledRef.current) {
+                      setSpeakTrigger({ price: tempFinalPrice, id: Date.now() });
+                    }
                 }
             }
         };
@@ -901,7 +895,6 @@ const App: React.FC = () => {
   return (
     <div className={`flex justify-center ${currentTheme.bodyBg} ${currentTheme.font}`}>
       {isTutorialActive && <Tutorial onFinish={finishTutorial} />}
-      <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
       {isThemeDropdownOpen && <div className="fixed inset-0 z-50" onClick={() => setIsThemeDropdownOpen(false)} aria-hidden="true" />}
       {renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false))}
       {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
@@ -947,13 +940,13 @@ const App: React.FC = () => {
                         <span className="font-semibold">רטט</span>
                         <div className="relative"><input type="checkbox" id="vibration-toggle" className="sr-only" checked={isVibrationEnabled} onChange={() => setIsVibrationEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVibrationEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVibrationEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
+                    <label htmlFor="voice-output-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">הקראת מחיר סופי בקול</span>
+                        <div className="relative"><input type="checkbox" id="voice-output-toggle" className="sr-only" checked={isVoiceOutputEnabled} onChange={() => setIsVoiceOutputEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVoiceOutputEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVoiceOutputEnabled ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
                     <label htmlFor="image-bg-toggle" className="flex items-center justify-between cursor-pointer">
                         <span className="font-semibold">רקע תמונה</span>
                         <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
-                    </label>
-                    <label htmlFor="accessibility-toggle" className="flex items-center justify-between cursor-pointer">
-                        <span className="font-semibold">הקראה לקורא מסך</span>
-                        <div className="relative"><input type="checkbox" id="accessibility-toggle" className="sr-only" checked={isAccessibilityEnabled} onChange={() => setIsAccessibilityEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isAccessibilityEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isAccessibilityEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
                 </div>
             </div>
