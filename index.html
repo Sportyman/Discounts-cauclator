@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>מחשבון הנחות</title>
     <meta name="theme-color" content="#020617"/>
-    <link rel="manifest" href="./manifest.json" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,7 +32,6 @@
       שלב 1: הדבק כאן את קוד ה-AdSense הראשי שקיבלת מגוגל.
       זהו קוד ה-JavaScript שמתחיל ב-<script async src="..."> 
     -->
-    <!-- Add Babel to transpile JSX/TSX in the browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <script type="importmap">
 {
@@ -47,19 +45,6 @@
 </head>
 <body class="bg-gray-100">
     <div id="root"></div>
-    <!-- Changed type to text/babel and src to a relative path -->
-    <script type="text/babel" data-type="module" src="./index.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Changed path to relative to fix 404 error
-          navigator.serviceWorker.register('./service-worker.js').then(registration => {
-            console.log('SW registered: ', registration);
-          }).catch(registrationError => {
-            console.log('SW registration failed: ', registrationError);
-          });
-        });
-      }
-    </script>
+    <script type="text/babel" data-type="module" src="index.tsx"></script>
 </body>
 </html>
