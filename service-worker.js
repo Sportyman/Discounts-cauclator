@@ -1,9 +1,10 @@
 
 const CACHE_NAME = 'discount-calculator-v1';
 const urlsToCache = [
-  '/',
-  '/index.html',
-  '/index.tsx',
+  './',
+  './index.html',
+  './index.tsx',
+  './manifest.json',
   // You would add other assets here like your main JS bundle, CSS files, etc.
   // For now, these are the essentials for the current setup.
   // Note: External resources like Google Fonts or TailwindCSS CDN are not cached by this basic setup.
