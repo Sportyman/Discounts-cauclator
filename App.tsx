@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 
 // --- Theme Definitions ---
@@ -528,20 +529,20 @@ const Tutorial: React.FC<{onFinish: () => void}> = ({ onFinish }) => {
                 }}
             ></div>
             
-            <div style={tooltipStyle} className="absolute z-[101] w-64 p-4 bg-white rounded-lg shadow-xl text-gray-800 font-assistant">
+            <div style={tooltipStyle} className="absolute z-[101] w-72 p-4 bg-white rounded-lg shadow-xl text-gray-800 font-assistant">
                 <span className="absolute top-3 left-3 text-xs font-mono text-gray-400">{stepIndex + 1} / {tutorialSteps.length}</span>
                 <h3 className="font-bold text-lg mb-2 pt-2">{step.title}</h3>
-                <p className="text-sm">{step.text}</p>
+                <p className="text-base">{step.text}</p>
                 <div className="flex justify-between items-center mt-4">
                     <button onClick={onFinish} className="text-xs text-gray-500 hover:underline">דלג</button>
                     <div className="flex items-center gap-2">
                        {stepIndex > 0 && (
-                         <button onClick={() => setStepIndex(s => s - 1)} className="px-3 py-1 text-sm bg-gray-200 rounded-md hover:bg-gray-300">הקודם</button>
+                         <button onClick={() => setStepIndex(s => s - 1)} className="px-3 py-1 text-base bg-gray-200 rounded-md hover:bg-gray-300">הקודם</button>
                        )}
                        {stepIndex < tutorialSteps.length - 1 ? (
-                         <button onClick={() => setStepIndex(s => s + 1)} className="px-3 py-1 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600">הבא</button>
+                         <button onClick={() => setStepIndex(s => s + 1)} className="px-3 py-1 text-base bg-blue-500 text-white rounded-md hover:bg-blue-600">הבא</button>
                        ) : (
-                         <button onClick={onFinish} className="px-3 py-1 text-sm bg-green-500 text-white rounded-md hover:bg-green-600">סיום</button>
+                         <button onClick={onFinish} className="px-3 py-1 text-base bg-green-500 text-white rounded-md hover:bg-green-600">סיום</button>
                        )}
                     </div>
                 </div>
