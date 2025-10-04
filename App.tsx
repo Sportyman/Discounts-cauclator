@@ -570,7 +570,7 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [speakTrigger, setSpeakTrigger] = useState(false);
+  const [speakTrigger, setSpeakTrigger] = useState<number | null>(null);
   const [hebrewVoice, setHebrewVoice] = useState<SpeechSynthesisVoice | null>(null);
   
   const finalPrice = useMemo(() => {
@@ -588,6 +588,7 @@ const App: React.FC = () => {
   const recognitionRef = useRef<any | null>(null);
   const isContinuousModeRef = useRef(false);
   const isSpeakingRef = useRef(false);
+  const stopListeningUserRequest = useRef(false);
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -637,14 +638,14 @@ const App: React.FC = () => {
       const finalPriceValue = finalPrice;
       const timer = setTimeout(() => {
         const formattedPrice = finalPriceValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        setAnnouncement(`המחיר הסופי הוא ${formattedPrice} שקלים`);
+        setAnnouncement(`יוצא ${formattedPrice} שקלים`);
       }, 500);
       return () => clearTimeout(timer);
     }
   }, [priceStr, discounts, isAccessibilityEnabled, finalPrice]);
   
   useEffect(() => {
-    if (speakTrigger) {
+    if (speakTrigger !== null) {
         if (isContinuousModeRef.current && recognitionRef.current) {
             isSpeakingRef.current = true;
             recognitionRef.current.stop();
@@ -652,12 +653,14 @@ const App: React.FC = () => {
 
         window.speechSynthesis.cancel();
         
-        const isWholeNumber = finalPrice % 1 === 0;
-        const priceToSpeak = isWholeNumber 
-            ? finalPrice.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-            : finalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const priceToSpeak = speakTrigger;
+        
+        const isWholeNumber = priceToSpeak % 1 === 0;
+        const formattedPriceToSpeak = isWholeNumber 
+            ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+            : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-        const utterance = new SpeechSynthesisUtterance(`המחיר הסופי הוא ${priceToSpeak}`);
+        const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
         utterance.lang = 'he-IL';
 
         if (hebrewVoice) {
@@ -667,15 +670,15 @@ const App: React.FC = () => {
 
         utterance.onend = () => {
             isSpeakingRef.current = false;
-            if (isContinuousModeRef.current && recognitionRef.current) {
+            if (isContinuousModeRef.current && recognitionRef.current && !stopListeningUserRequest.current) {
                 recognitionRef.current.start();
             }
         };
 
         window.speechSynthesis.speak(utterance);
-        setSpeakTrigger(false);
+        setSpeakTrigger(null);
     }
-  }, [speakTrigger, finalPrice, hebrewVoice]);
+  }, [speakTrigger, hebrewVoice]);
 
   const setTheme = (newTheme: ThemeName) => setThemeState(newTheme);
   
@@ -789,7 +792,6 @@ const App: React.FC = () => {
       setHistory(current => [newEntry, ...current]);
     }
     setPriceStr('');
-    setManualDiscountStr('');
   };
   const handleResetCalculation = executeWithFeedback(handleResetCalculationInternal);
   
@@ -835,8 +837,8 @@ const App: React.FC = () => {
 
         recognition.onend = () => {
             setIsListening(false);
-            if (isContinuousModeRef.current && !isSpeakingRef.current) {
-                setTimeout(() => recognitionRef.current?.start(), 100);
+             if (isContinuousModeRef.current && !isSpeakingRef.current && !stopListeningUserRequest.current) {
+                recognition.start();
             }
         };
 
@@ -857,7 +859,13 @@ const App: React.FC = () => {
                 const numberStr = parseSpokenNumber(finalTranscript);
                 if (numberStr) {
                     setPriceStr(numberStr);
-                    setSpeakTrigger(true);
+                    
+                    const tempFinalPrice = discounts.reduce((currentPrice, discount) => {
+                       if (discount.active) return currentPrice * (1 - discount.value / 100);
+                       return currentPrice;
+                    }, parseFloat(numberStr) || 0);
+
+                    setSpeakTrigger(tempFinalPrice);
                 }
             }
         };
@@ -865,10 +873,16 @@ const App: React.FC = () => {
     }
     
     if (isContinuousModeRef.current) {
+        // Stop listening
         isContinuousModeRef.current = false;
+        stopListeningUserRequest.current = true;
         recognitionRef.current.stop();
+        window.speechSynthesis.cancel();
+        setIsListening(false);
     } else {
+        // Start listening
         isContinuousModeRef.current = true;
+        stopListeningUserRequest.current = false;
         recognitionRef.current.start();
     }
   };
@@ -888,10 +902,10 @@ const App: React.FC = () => {
       
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
-            <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
+            <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
                 <div className="flex justify-between items-center mb-6">
-                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                     <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
+                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-3 pr-2">
                     {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
@@ -912,10 +926,10 @@ const App: React.FC = () => {
       
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
-          <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
+          <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
             <div className="flex justify-between items-center mb-6">
-                <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                 <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+                <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
