@@ -636,6 +636,12 @@ const App = () => {
   const audioContextRef = useRef(null);
   const recognitionRef = useRef(null);
 
+  // Ref to track the current voice state to avoid stale closures in event handlers
+  const voiceStateRef = useRef(voiceState);
+  useEffect(() => {
+    voiceStateRef.current = voiceState;
+  }, [voiceState]);
+
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
     if (!hasSeenTutorial) {
@@ -817,6 +823,20 @@ const App = () => {
     return numericPart ? numericPart.join('') : '';
   };
 
+  const stopAllVoiceActivity = () => {
+    if (recognitionRef.current) {
+      // Remove handlers to prevent lingering events from firing
+      recognitionRef.current.onstart = null;
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onend = null;
+      recognitionRef.current.stop();
+      recognitionRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+    setVoiceState('idle');
+  };
+
   const speakPrice = (priceToSpeak) => {
     window.speechSynthesis.cancel();
 
@@ -836,12 +856,16 @@ const App = () => {
         setVoiceState('speaking');
     };
     utterance.onend = () => {
-        setVoiceState('idle');
+        if (voiceStateRef.current === 'speaking') {
+           setVoiceState('idle');
+        }
     };
-    utterance.onerror = () => {
-        setVoiceState('idle');
+    utterance.onerror = (e) => {
+       console.error("Speech synthesis error", e);
+       if (voiceStateRef.current === 'speaking') {
+           setVoiceState('idle');
+       }
     }
-
     window.speechSynthesis.speak(utterance);
   };
   
@@ -852,19 +876,15 @@ const App = () => {
       return;
     }
 
-    if (voiceState !== 'idle') {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      window.speechSynthesis.cancel();
-      setVoiceState('idle');
+    if (voiceStateRef.current !== 'idle') {
+      stopAllVoiceActivity();
       return;
     }
 
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.lang = 'he-IL';
-    recognition.continuous = false; // Important: one-shot recognition
+    recognition.continuous = false;
     recognition.interimResults = false;
 
     recognition.onstart = () => {
@@ -872,41 +892,41 @@ const App = () => {
     };
 
     recognition.onerror = (event) => {
-      console.error('Speech recognition error', event.error);
-      setVoiceState('idle');
+      console.error('Speech recognition error:', event.error);
     };
     
     recognition.onend = () => {
-      // If state is still listening, it means no result was captured.
-      if (voiceState === 'listening') {
+      if (voiceStateRef.current === 'listening') {
         setVoiceState('idle');
       }
+      recognitionRef.current = null;
     };
 
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      if (transcript) {
-        const numberStr = parseSpokenNumber(transcript);
-        if (numberStr) {
-          setPriceStr(numberStr);
-          
-          if (isVoiceFeedbackEnabled) {
-            const price = parseFloat(numberStr) || 0;
-            const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
-               if (discount.active) return currentPrice * (1 - discount.value / 100);
-               return currentPrice;
-            }, price);
-            
-            // Stop recognition before speaking to prevent overlap
-            recognition.stop(); 
-            speakPrice(calculatedFinalPrice);
-          }
-        }
+      const transcript = event.results[event.results.length - 1][0].transcript;
+      if (!transcript) return;
+      
+      const numberStr = parseSpokenNumber(transcript);
+      if (!numberStr) return;
+      
+      setPriceStr(numberStr);
+      
+      const price = parseFloat(numberStr) || 0;
+      const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
+          if (discount.active) return currentPrice * (1 - discount.value / 100);
+          return currentPrice;
+      }, price);
+
+      if (isVoiceFeedbackEnabled) {
+        speakPrice(calculatedFinalPrice);
+      } else {
+        setVoiceState('idle');
       }
     };
 
     recognition.start();
   };
+
 
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
     backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${currentTheme.backgroundImage})`,
