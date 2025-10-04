@@ -606,6 +606,7 @@ const App = () => {
   const [theme, setThemeState] = useState(() => getFromLocalStorage('calculator-theme', 'default'));
   const [history, setHistory] = useState(() => getFromLocalStorage('calculator-history', []));
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => getFromLocalStorage('calculator-sound-enabled', false));
+  const [isVibrationEnabled, setIsVibrationEnabled] = useState(() => getFromLocalStorage('calculator-vibration-enabled', true));
   const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState(() => getFromLocalStorage('calculator-accessibility-enabled', false));
   const [useImageBackground, setUseImageBackground] = useState(() => getFromLocalStorage('calculator-image-background-enabled', true));
   const [isTutorialActive, setIsTutorialActive] = useState(false);
@@ -656,6 +657,7 @@ const App = () => {
   useEffect(() => { saveToLocalStorage('calculator-history', history); }, [history]);
   useEffect(() => { saveToLocalStorage('calculator-theme', theme); }, [theme]);
   useEffect(() => { saveToLocalStorage('calculator-sound-enabled', isSoundEnabled); }, [isSoundEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-vibration-enabled', isVibrationEnabled); }, [isVibrationEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-accessibility-enabled', isAccessibilityEnabled); }, [isAccessibilityEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
   
@@ -684,7 +686,7 @@ const App = () => {
   const setTheme = (newTheme) => setThemeState(newTheme);
   
   const triggerVibration = () => {
-    if (navigator.vibrate) {
+    if (isVibrationEnabled && navigator.vibrate) {
       navigator.vibrate(50);
     }
   };
@@ -901,22 +903,31 @@ const App = () => {
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
             <div className="flex justify-between items-center mb-6">
-              <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
-              <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+               <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
             </div>
-            <div className={`space-y-6 ${currentTheme.modalTextColor}`}>
-              <label htmlFor="sound-toggle" className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold">צלילי לחיצה</span>
-                <div className="relative"><input type="checkbox" id="sound-toggle" className="sr-only" checked={isSoundEnabled} onChange={() => setIsSoundEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isSoundEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isSoundEnabled ? 'translate-x-6' : ''}`}></div></div>
-              </label>
-              <label htmlFor="image-bg-toggle" className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold">רקע תמונה</span>
-                <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
-              </label>
-              <label htmlFor="accessibility-toggle" className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold">הקראה לקורא מסך</span>
-                <div className="relative"><input type="checkbox" id="accessibility-toggle" className="sr-only" checked={isAccessibilityEnabled} onChange={() => setIsAccessibilityEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isAccessibilityEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isAccessibilityEnabled ? 'translate-x-6' : ''}`}></div></div>
-              </label>
+            <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
+                <div className="space-y-6">
+                    <label htmlFor="sound-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">צלילי לחיצה</span>
+                        <div className="relative"><input type="checkbox" id="sound-toggle" className="sr-only" checked={isSoundEnabled} onChange={() => setIsSoundEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isSoundEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isSoundEnabled ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
+                    <label htmlFor="vibration-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">רטט</span>
+                        <div className="relative"><input type="checkbox" id="vibration-toggle" className="sr-only" checked={isVibrationEnabled} onChange={() => setIsVibrationEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVibrationEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVibrationEnabled ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
+                    <label htmlFor="image-bg-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">רקע תמונה</span>
+                        <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
+                    <label htmlFor="accessibility-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">הקראה לקורא מסך</span>
+                        <div className="relative"><input type="checkbox" id="accessibility-toggle" className="sr-only" checked={isAccessibilityEnabled} onChange={() => setIsAccessibilityEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isAccessibilityEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isAccessibilityEnabled ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
+                </div>
+            </div>
+            <div className="mt-8">
+                 <button onClick={() => { setIsSettingsOpen(false); setIsTutorialActive(true); }} className={`w-full text-center py-3 font-semibold rounded-lg ${currentTheme.buttonClasses}`} style={{backgroundColor: currentTheme.manualButtonBg, color: currentTheme.manualButtonTextColor || 'white'}}>צפה שוב במדריך</button>
             </div>
           </div>
         </div>
