@@ -561,16 +561,14 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryEntry[]>(() => getFromLocalStorage('calculator-history', []));
   const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-sound-enabled', false));
   const [isVibrationEnabled, setIsVibrationEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-vibration-enabled', true));
-  const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-accessibility-enabled', false));
+  const [isSpeakResponseEnabled, setIsSpeakResponseEnabled] = useState<boolean>(() => getFromLocalStorage('calculator-speak-response-enabled', true));
   const [useImageBackground, setUseImageBackground] = useState<boolean>(() => getFromLocalStorage('calculator-image-background-enabled', true));
   const [isTutorialActive, setIsTutorialActive] = useState(false);
   
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
   const [isListening, setIsListening] = useState(false);
-  const [speakTrigger, setSpeakTrigger] = useState<number | null>(null);
   const [hebrewVoice, setHebrewVoice] = useState<SpeechSynthesisVoice | null>(null);
   
   const finalPrice = useMemo(() => {
@@ -583,17 +581,17 @@ const App: React.FC = () => {
   }, [priceStr, discounts]);
 
   const discountsRef = useRef(discounts);
-  useEffect(() => {
-    discountsRef.current = discounts;
-  }, [discounts]);
+  useEffect(() => { discountsRef.current = discounts; }, [discounts]);
+
+  const isSpeakResponseEnabledRef = useRef(isSpeakResponseEnabled);
+  useEffect(() => { isSpeakResponseEnabledRef.current = isSpeakResponseEnabled; }, [isSpeakResponseEnabled]);
 
   const longPressTimerRef = useRef<number | null>(null);
   const rapidDeleteIntervalRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const recognitionRef = useRef<any | null>(null);
-  const isContinuousModeRef = useRef(false);
   const isSpeakingRef = useRef(false);
-  const stopListeningUserRequest = useRef(false);
+  const isContinuousModeRef = useRef(false);
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -635,55 +633,38 @@ const App: React.FC = () => {
   useEffect(() => { saveToLocalStorage('calculator-theme', theme); }, [theme]);
   useEffect(() => { saveToLocalStorage('calculator-sound-enabled', isSoundEnabled); }, [isSoundEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-vibration-enabled', isVibrationEnabled); }, [isVibrationEnabled]);
-  useEffect(() => { saveToLocalStorage('calculator-accessibility-enabled', isAccessibilityEnabled); }, [isAccessibilityEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-speak-response-enabled', isSpeakResponseEnabled); }, [isSpeakResponseEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
   
-  useEffect(() => {
-    if (isAccessibilityEnabled && priceStr) {
-      const finalPriceValue = finalPrice;
-      const timer = setTimeout(() => {
-        const formattedPrice = finalPriceValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        setAnnouncement(`יוצא ${formattedPrice} שקלים`);
-      }, 500);
-      return () => clearTimeout(timer);
+  const speak = (priceToSpeak: number) => {
+    if (!isSpeakResponseEnabledRef.current) return;
+    
+    isSpeakingRef.current = true;
+    window.speechSynthesis.cancel();
+    
+    const isWholeNumber = priceToSpeak % 1 === 0;
+    const formattedPriceToSpeak = isWholeNumber 
+        ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+        : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
+    utterance.lang = 'he-IL';
+
+    if (hebrewVoice) {
+        utterance.voice = hebrewVoice;
     }
-  }, [priceStr, discounts, isAccessibilityEnabled, finalPrice]);
-  
-  useEffect(() => {
-    if (speakTrigger !== null) {
-        if (isContinuousModeRef.current && recognitionRef.current) {
-            isSpeakingRef.current = true;
-            recognitionRef.current.stop();
-        }
+    utterance.rate = 1.2;
 
-        window.speechSynthesis.cancel();
-        
-        const priceToSpeak = speakTrigger;
-        
-        const isWholeNumber = priceToSpeak % 1 === 0;
-        const formattedPriceToSpeak = isWholeNumber 
-            ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-            : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    utterance.onend = () => {
+        isSpeakingRef.current = false;
+    };
+    
+    utterance.onerror = () => {
+        isSpeakingRef.current = false;
+    };
 
-        const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
-        utterance.lang = 'he-IL';
-
-        if (hebrewVoice) {
-            utterance.voice = hebrewVoice;
-        }
-        utterance.rate = 1.2;
-
-        utterance.onend = () => {
-            isSpeakingRef.current = false;
-            if (isContinuousModeRef.current && recognitionRef.current && !stopListeningUserRequest.current) {
-                recognitionRef.current.start();
-            }
-        };
-
-        window.speechSynthesis.speak(utterance);
-        setSpeakTrigger(null);
-    }
-  }, [speakTrigger, hebrewVoice]);
+    window.speechSynthesis.speak(utterance);
+  };
 
   const setTheme = (newTheme: ThemeName) => setThemeState(newTheme);
   
@@ -829,37 +810,51 @@ const App: React.FC = () => {
       alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
       return;
     }
+    
+    if (isContinuousModeRef.current) {
+        // Stop listening
+        isContinuousModeRef.current = false;
+        if (recognitionRef.current) {
+            recognitionRef.current.stop();
+        }
+        window.speechSynthesis.cancel();
+        setIsListening(false);
+        return;
+    }
+
+    // Start listening
+    isContinuousModeRef.current = true;
 
     if (!recognitionRef.current) {
         const recognition = new SpeechRecognition();
         recognition.lang = 'he-IL';
-        recognition.continuous = true;
-        recognition.interimResults = true;
+        recognition.continuous = true; // Keep listening even after a pause
+        recognition.interimResults = false; // We only want the final result
 
-        recognition.onstart = () => {
-            setIsListening(true);
-        };
-
+        recognition.onstart = () => setIsListening(true);
+        
         recognition.onend = () => {
             setIsListening(false);
-             if (isContinuousModeRef.current && !isSpeakingRef.current && !stopListeningUserRequest.current) {
-                recognition.start();
+            // If the session was ended by the user, don't restart.
+            if (isContinuousModeRef.current) {
+                // If it ends for other reasons (e.g. network error, timeout), restart it.
+                setTimeout(() => recognition.start(), 100);
             }
         };
 
         recognition.onerror = (event: any) => {
             console.error('Speech recognition error', event.error);
-            isContinuousModeRef.current = false;
-            setIsListening(false);
+            // No need to set isContinuousModeRef to false, onend will handle restart logic
         };
         
         recognition.onresult = (event: any) => {
-            let finalTranscript = '';
-            for (let i = event.resultIndex; i < event.results.length; ++i) {
-                if (event.results[i].isFinal) {
-                    finalTranscript += event.results[i][0].transcript;
-                }
+            if (isSpeakingRef.current) {
+                return; // Ignore recognition results while the app is speaking
             }
+            
+            const last = event.results.length - 1;
+            const finalTranscript = event.results[last][0].transcript;
+            
             if (finalTranscript.trim()) {
                 const numberStr = parseSpokenNumber(finalTranscript);
                 if (numberStr) {
@@ -870,26 +865,14 @@ const App: React.FC = () => {
                        return currentPrice;
                     }, parseFloat(numberStr) || 0);
 
-                    setSpeakTrigger(tempFinalPrice);
+                    speak(tempFinalPrice);
                 }
             }
         };
         recognitionRef.current = recognition;
     }
     
-    if (isContinuousModeRef.current) {
-        // Stop listening
-        isContinuousModeRef.current = false;
-        stopListeningUserRequest.current = true;
-        recognitionRef.current.stop();
-        window.speechSynthesis.cancel();
-        setIsListening(false);
-    } else {
-        // Start listening
-        isContinuousModeRef.current = true;
-        stopListeningUserRequest.current = false;
-        recognitionRef.current.start();
-    }
+    recognitionRef.current.start();
   };
 
   const containerStyle = useImageBackground && (currentTheme as any).backgroundImage ? {
@@ -901,7 +884,7 @@ const App: React.FC = () => {
   return (
     <div className={`flex justify-center ${currentTheme.bodyBg} ${currentTheme.font}`}>
       {isTutorialActive && <Tutorial onFinish={finishTutorial} />}
-      <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
+      <div className="sr-only" aria-live="polite" aria-atomic="true"></div>
       {isThemeDropdownOpen && <div className="fixed inset-0 z-50" onClick={() => setIsThemeDropdownOpen(false)} aria-hidden="true" />}
       {renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false))}
       {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
@@ -909,7 +892,7 @@ const App: React.FC = () => {
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
             <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-                <div className="flex justify-start items-center gap-4 mb-6">
+                <div className="flex justify-between items-center mb-6">
                     <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
                     <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
@@ -933,7 +916,7 @@ const App: React.FC = () => {
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-            <div className="flex justify-start items-center gap-4 mb-6">
+            <div className="flex justify-between items-center mb-6">
                 <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
                 <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
@@ -947,13 +930,13 @@ const App: React.FC = () => {
                         <span className="font-semibold">רטט</span>
                         <div className="relative"><input type="checkbox" id="vibration-toggle" className="sr-only" checked={isVibrationEnabled} onChange={() => setIsVibrationEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVibrationEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVibrationEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
+                     <label htmlFor="speak-response-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold">הקראת מחיר סופי בקול</span>
+                        <div className="relative"><input type="checkbox" id="speak-response-toggle" className="sr-only" checked={isSpeakResponseEnabled} onChange={() => setIsSpeakResponseEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isSpeakResponseEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isSpeakResponseEnabled ? 'translate-x-6' : ''}`}></div></div>
+                    </label>
                     <label htmlFor="image-bg-toggle" className="flex items-center justify-between cursor-pointer">
                         <span className="font-semibold">רקע תמונה</span>
                         <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
-                    </label>
-                    <label htmlFor="accessibility-toggle" className="flex items-center justify-between cursor-pointer">
-                        <span className="font-semibold">הקראה לקורא מסך</span>
-                        <div className="relative"><input type="checkbox" id="accessibility-toggle" className="sr-only" checked={isAccessibilityEnabled} onChange={() => setIsAccessibilityEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isAccessibilityEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isAccessibilityEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
                 </div>
             </div>
@@ -980,7 +963,10 @@ const App: React.FC = () => {
               )}
             </div>
           </div>
-          <h1 className={`text-3xl w-full ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>מחשבון הנחות</h1>
+           <div className="flex items-center justify-center w-full">
+            <h1 className={`text-3xl ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>מחשבון הנחות</h1>
+            <span className="text-xs text-gray-400 mr-2 opacity-70">0.1</span>
+          </div>
           <button id="history-button" onClick={() => setIsHistoryOpen(true)} className={`absolute top-1/2 right-4 transform -translate-y-1/2 ${currentTheme.iconClasses}`} aria-label="View calculation history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
         </header>
 
