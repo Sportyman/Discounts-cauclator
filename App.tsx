@@ -789,7 +789,6 @@ const App: React.FC = () => {
       setHistory(current => [newEntry, ...current]);
     }
     setPriceStr('');
-    setDiscounts([]);
     setManualDiscountStr('');
   };
   const handleResetCalculation = executeWithFeedback(handleResetCalculationInternal);
