@@ -711,25 +711,11 @@ const App = () => {
 
         utterance.onend = () => {
             isSpeakingRef.current = false;
-            if (isContinuousModeRef.current && recognitionRef.current) {
-                try {
-                    recognitionRef.current.start();
-                } catch(e) {
-                    console.error("Error restarting recognition after speech", e);
-                }
-            }
         };
         
         utterance.onerror = (e) => {
             console.error("Speech synthesis error", e);
             isSpeakingRef.current = false;
-            if (isContinuousModeRef.current && recognitionRef.current) {
-                try {
-                    recognitionRef.current.start();
-                } catch(e) {
-                    console.error("Error restarting recognition after speech error", e);
-                }
-            }
         };
 
         window.speechSynthesis.speak(utterance);
@@ -919,8 +905,6 @@ const App = () => {
             if (finalTranscript.trim()) {
                 const numberStr = parseSpokenNumber(finalTranscript);
                 if (numberStr) {
-                    recognition.stop();
-                    
                     setPriceStr(numberStr);
                     
                     const tempFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
@@ -930,14 +914,6 @@ const App = () => {
 
                     if (isVoiceOutputEnabledRef.current) {
                       setSpeakTrigger({ price: tempFinalPrice, id: Date.now() });
-                    } else {
-                        if (isContinuousModeRef.current) {
-                           try {
-                             recognition.start();
-                           } catch(e) {
-                             console.error("Error restarting recognition when no speech", e);
-                           }
-                        }
                     }
                 }
             }
@@ -977,9 +953,9 @@ const App = () => {
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
             <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-                <div className="flex justify-start items-center gap-4 mb-6">
-                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                <div className="flex justify-between items-center mb-6">
                     <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
+                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-3 pr-2">
                     {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
@@ -1001,9 +977,9 @@ const App = () => {
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-            <div className="flex justify-start items-center gap-4 mb-6">
-                <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div className="flex justify-between items-center mb-6">
                 <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+                <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
@@ -1048,7 +1024,10 @@ const App = () => {
               )}
             </div>
           </div>
-          <h1 className={`text-3xl w-full ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>מחשבון הנחות</h1>
+          <h1 className={`text-3xl w-full ${currentTheme.headerClasses}`} style={{color: currentTheme.headerColor}}>
+            מחשבון הנחות
+            <span className="text-xs font-mono align-middle opacity-60 ml-2">v0.1</span>
+          </h1>
           <button id="history-button" onClick={() => setIsHistoryOpen(true)} className={`absolute top-1/2 right-4 transform -translate-y-1/2 ${currentTheme.iconClasses}`} aria-label="View calculation history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
         </header>
 
