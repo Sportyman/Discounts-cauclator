@@ -614,7 +614,7 @@ const App = () => {
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening', 'speaking'
+  const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening', 'processing', 'speaking'
   const [hebrewVoice, setHebrewVoice] = useState(null);
   
   const finalPrice = useMemo(() => {
@@ -626,21 +626,171 @@ const App = () => {
     }, initialPrice);
   }, [priceStr, discounts]);
 
-  const discountsRef = useRef(discounts);
-  useEffect(() => {
-    discountsRef.current = discounts;
-  }, [discounts]);
 
   const longPressTimerRef = useRef(null);
   const rapidDeleteIntervalRef = useRef(null);
   const audioContextRef = useRef(null);
+  
+  // --- New Robust Voice Recognition System ---
   const recognitionRef = useRef(null);
-  const continuousListeningDesiredRef = useRef(false);
+  const speechRef = useRef(null);
+  const isMountedRef = useRef(true);
+  
+  // Use a single ref for all state variables to prevent stale closures in callbacks
+  const voiceSessionStateRef = useRef({
+      isContinuous: false,
+      voiceState: 'idle',
+      isVoiceFeedbackEnabled: true,
+      discounts: [],
+      hebrewVoice: null,
+  });
 
-  const voiceStateRef = useRef(voiceState);
   useEffect(() => {
-    voiceStateRef.current = voiceState;
-  }, [voiceState]);
+      // Keep the ref updated with the latest state
+      voiceSessionStateRef.current.isVoiceFeedbackEnabled = isVoiceFeedbackEnabled;
+      voiceSessionStateRef.current.discounts = discounts;
+      voiceSessionStateRef.current.hebrewVoice = hebrewVoice;
+  }, [isVoiceFeedbackEnabled, discounts, hebrewVoice]);
+
+  useEffect(() => {
+      isMountedRef.current = true;
+      // Cleanup on unmount
+      return () => {
+          isMountedRef.current = false;
+          stopVoiceSession();
+      };
+  }, []);
+
+  const setVoiceStateUI = (newState) => {
+      if (isMountedRef.current) {
+          setVoiceState(newState);
+          voiceSessionStateRef.current.voiceState = newState;
+      }
+  };
+  
+  const stopVoiceSession = () => {
+    voiceSessionStateRef.current.isContinuous = false;
+
+    if (recognitionRef.current) {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.abort();
+        recognitionRef.current = null;
+    }
+    if (speechRef.current) {
+        speechRef.current.onend = null;
+        speechRef.current.onerror = null;
+        window.speechSynthesis.cancel();
+        speechRef.current = null;
+    }
+    setVoiceStateUI('idle');
+  };
+
+  const startListening = () => {
+      if (!voiceSessionStateRef.current.isContinuous || recognitionRef.current || voiceSessionStateRef.current.voiceState === 'speaking') {
+          return;
+      }
+      
+      setVoiceStateUI('listening');
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      const recognition = recognitionRef.current;
+      recognition.lang = 'he-IL';
+      recognition.continuous = false;
+      recognition.interimResults = false;
+
+      recognition.onresult = (event) => {
+          setVoiceStateUI('processing');
+          const transcript = event.results[0][0].transcript.trim();
+          const numberStr = parseSpokenNumber(transcript);
+
+          if (numberStr) {
+              if (isMountedRef.current) {
+                  setPriceStr(numberStr);
+              }
+              
+              const price = parseFloat(numberStr) || 0;
+              const currentDiscounts = voiceSessionStateRef.current.discounts;
+              const calculatedFinalPrice = currentDiscounts.reduce((currentPrice, discount) => {
+                  if (discount.active) return currentPrice * (1 - discount.value / 100);
+                  return currentPrice;
+              }, price);
+
+              if (voiceSessionStateRef.current.isVoiceFeedbackEnabled) {
+                  speakPrice(calculatedFinalPrice);
+              } else {
+                  startListening(); // Loop back to listening if no voice feedback
+              }
+          } else {
+              startListening(); // If parsing fails, just go back to listening
+          }
+      };
+
+      recognition.onerror = (event) => {
+          console.error('Recognition Error:', event.error);
+          if (event.error !== 'no-speech' && event.error !== 'aborted') {
+              stopVoiceSession(); // Stop on critical errors
+          }
+      };
+      
+      recognition.onend = () => {
+          recognitionRef.current = null;
+          // Core loop logic: re-listen only if desired and not about to speak
+          if (voiceSessionStateRef.current.isContinuous && voiceSessionStateRef.current.voiceState === 'listening') {
+              startListening();
+          }
+      };
+      recognition.start();
+  };
+  
+  const speakPrice = (priceToSpeak) => {
+      setVoiceStateUI('speaking');
+      
+      const isWholeNumber = priceToSpeak % 1 === 0;
+      const formattedPrice = isWholeNumber 
+          ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+          : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      
+      const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
+      speechRef.current = utterance;
+      utterance.lang = 'he-IL';
+      if (voiceSessionStateRef.current.hebrewVoice) {
+          utterance.voice = voiceSessionStateRef.current.hebrewVoice;
+      }
+      utterance.rate = 1.1;
+
+      const onDone = () => {
+          speechRef.current = null;
+          if (voiceSessionStateRef.current.isContinuous) {
+              // Wait a tiny moment to prevent capturing echo
+              setTimeout(startListening, 50); 
+          } else {
+              stopVoiceSession();
+          }
+      };
+      utterance.onend = onDone;
+      utterance.onerror = (e) => {
+          console.error("Speech synthesis error", e);
+          onDone(); // Always try to continue the loop
+      };
+      window.speechSynthesis.speak(utterance);
+  };
+  
+  const handleVoiceButtonClick = () => {
+      if (voiceSessionStateRef.current.isContinuous) {
+          stopVoiceSession();
+      } else {
+          const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SpeechRecognition) {
+              alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
+              return;
+          }
+          voiceSessionStateRef.current.isContinuous = true;
+          startListening();
+      }
+  };
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -654,7 +804,9 @@ const App = () => {
         const voices = window.speechSynthesis.getVoices();
         const hebrewGoogleVoice = voices.find(voice => voice.lang === 'he-IL' && voice.name.includes('Google'));
         const hebrewDefaultVoice = voices.find(voice => voice.lang === 'he-IL');
-        setHebrewVoice(hebrewGoogleVoice || hebrewDefaultVoice || null);
+        const bestVoice = hebrewGoogleVoice || hebrewDefaultVoice || null;
+        setHebrewVoice(bestVoice);
+        voiceSessionStateRef.current.hebrewVoice = bestVoice;
     };
 
     loadVoices();
@@ -823,122 +975,6 @@ const App = () => {
     return numericPart ? numericPart.join('') : '';
   };
 
-    const stopAllVoiceActivity = () => {
-        continuousListeningDesiredRef.current = false;
-        if (recognitionRef.current) {
-            recognitionRef.current.onend = null;
-            recognitionRef.current.abort();
-            recognitionRef.current = null;
-        }
-        window.speechSynthesis.cancel();
-        setVoiceState('idle');
-    };
-
-    const startRecognition = () => {
-        if (!continuousListeningDesiredRef.current || recognitionRef.current) {
-            return;
-        }
-
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
-            stopAllVoiceActivity();
-            return;
-        }
-
-        const recognition = new SpeechRecognition();
-        recognitionRef.current = recognition;
-        recognition.lang = 'he-IL';
-        recognition.continuous = false; // Process one utterance at a time for better control
-        recognition.interimResults = false;
-
-        recognition.onstart = () => {
-            setVoiceState('listening');
-        };
-
-        recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            if (event.error !== 'aborted' && event.error !== 'no-speech') {
-                stopAllVoiceActivity();
-            }
-        };
-        
-        recognition.onend = () => {
-            recognitionRef.current = null;
-            if (continuousListeningDesiredRef.current && voiceStateRef.current !== 'speaking') {
-                startRecognition(); // Relisten if continuous mode is on and we are not speaking
-            } else if (!continuousListeningDesiredRef.current) {
-                setVoiceState('idle');
-            }
-        };
-
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript.trim();
-            if (!transcript) return;
-            
-            const numberStr = parseSpokenNumber(transcript);
-            if (!numberStr) return;
-            
-            setPriceStr(numberStr);
-            
-            const price = parseFloat(numberStr) || 0;
-            const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
-                if (discount.active) return currentPrice * (1 - discount.value / 100);
-                return currentPrice;
-            }, price);
-
-            if (isVoiceFeedbackEnabled) {
-                speakPrice(calculatedFinalPrice);
-            }
-        };
-
-        recognition.start();
-    };
-
-    const speakPrice = (priceToSpeak) => {
-        window.speechSynthesis.cancel();
-
-        const isWholeNumber = priceToSpeak % 1 === 0;
-        const formattedPriceToSpeak = isWholeNumber 
-            ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-            : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-        const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
-        utterance.lang = 'he-IL';
-        if (hebrewVoice) {
-            utterance.voice = hebrewVoice;
-        }
-        utterance.rate = 1.2;
-
-        utterance.onstart = () => {
-            setVoiceState('speaking');
-        };
-
-        const onDone = () => {
-            if (continuousListeningDesiredRef.current) {
-                startRecognition(); // Restart listening after speaking
-            } else {
-                setVoiceState('idle');
-            }
-        };
-        utterance.onend = onDone;
-        utterance.onerror = (e) => {
-            console.error("Speech synthesis error", e);
-            onDone(); // Always try to continue the loop
-        };
-        window.speechSynthesis.speak(utterance);
-    };
-  
-    const handleVoiceInput = () => {
-        if (voiceStateRef.current !== 'idle') {
-            stopAllVoiceActivity();
-        } else {
-            continuousListeningDesiredRef.current = true;
-            startRecognition();
-        }
-    };
-
-
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
     backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${currentTheme.backgroundImage})`,
     backgroundSize: 'cover',
@@ -1041,7 +1077,7 @@ const App = () => {
           </div>
           
           <div id="price-display" className={`relative p-2 text-4xl h-14 flex items-center justify-end font-sans ${currentTheme.priceDisplayClasses}`} style={{...(currentTheme.buttonBorderStyle || {})}}>
-            <button id="voice-button" onClick={handleVoiceInput} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${
+            <button id="voice-button" onClick={handleVoiceButtonClick} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${
                 voiceState === 'listening' ? 'bg-red-500 text-white animate-pulse' : 
                 voiceState === 'speaking' ? 'bg-blue-500 text-white' :
                 'bg-gray-200 text-gray-600 hover:bg-gray-300'
