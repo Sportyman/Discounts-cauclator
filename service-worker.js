@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'discount-calculator-v3'; // Cache version updated
+const CACHE_NAME = 'discount-calculator-v2';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -12,7 +12,6 @@ self.addEventListener('install', event => {
         console.log('Opened cache and caching initial assets');
         return cache.addAll(urlsToCache);
       })
-      .then(() => self.skipWaiting()) // Force the waiting service worker to become the active service worker.
   );
 });
 
@@ -27,16 +26,12 @@ self.addEventListener('activate', event => {
           }
         })
       );
-    }).then(() => self.clients.claim()) // Become the service worker for all open clients.
+    })
   );
 });
 
 self.addEventListener('fetch', event => {
   // Use a network-first strategy
-  if (event.request.method !== 'GET') {
-    return;
-  }
-  
   event.respondWith(
     fetch(event.request)
       .then(response => {
