@@ -632,7 +632,6 @@ const App = () => {
   const isManuallyStoppingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const lastProcessedNumberRef = useRef('');
-  const recognitionPausedRef = useRef(false);
 
   const discountsRef = useRef(discounts);
   const isVoiceFeedbackEnabledRef = useRef(isVoiceFeedbackEnabled);
@@ -794,7 +793,7 @@ const App = () => {
 
     const stopRecognition = () => {
         isManuallyStoppingRef.current = true;
-        recognitionPausedRef.current = false;
+        isSpeakingRef.current = false; // We are stopping everything, including potential speech
         window.speechSynthesis.cancel();
         if (recognitionRef.current) {
             try {
@@ -841,8 +840,9 @@ const App = () => {
             };
 
             recognition.onend = () => {
-                // If the stop was intentional (manual stop or programmatic pause for speech), do nothing.
-                if (isManuallyStoppingRef.current || recognitionPausedRef.current) {
+                // Do not auto-restart if we are speaking, or if the stop was manual.
+                // The restart will be handled by utterance.onend or by the user clicking the button again.
+                if (isSpeakingRef.current || isManuallyStoppingRef.current) {
                     return;
                 }
 
@@ -865,11 +865,13 @@ const App = () => {
             };
 
             recognition.onresult = (event) => {
-                if (recognitionPausedRef.current || isSpeakingRef.current) {
-                    return; // Ignore recognition results while paused or speaking
+                if (isSpeakingRef.current) {
+                    return; // Ignore recognition results while speaking to prevent feedback loop
                 }
+
                 setVoiceStatus('processing');
                 const lastResult = event.results[event.results.length - 1];
+
                 if (lastResult.isFinal) {
                     const transcript = lastResult[0].transcript.trim();
                     const numberStr = parseSpokenNumber(transcript);
@@ -884,9 +886,10 @@ const App = () => {
                             return currentPrice;
                         }, newPrice);
 
-                        if (isVoiceFeedbackEnabledRef.current) {
-                            // Programmatically pause recognition
-                            recognitionPausedRef.current = true;
+                        if (isVoiceFeedbackEnabledRef.current && newPrice > 0) {
+                            // Signal that we are about to speak, to prevent onend from auto-restarting.
+                            isSpeakingRef.current = true;
+                            
                             if (recognitionRef.current) {
                                 recognitionRef.current.stop(); // This will trigger 'onend'
                             }
@@ -895,11 +898,10 @@ const App = () => {
                             const speechText = formatPriceForSpeech(newFinalPrice);
                             const utterance = new SpeechSynthesisUtterance(speechText);
                             utterance.lang = 'he-IL';
-                            isSpeakingRef.current = true;
                             
                             utterance.onend = () => {
+                                // We've finished speaking, allow recognition again.
                                 isSpeakingRef.current = false;
-                                recognitionPausedRef.current = false;
                                 // Resume recognition if we are still supposed to be listening
                                 if (isListeningRef.current) {
                                     try {
@@ -915,11 +917,13 @@ const App = () => {
                             };
                             window.speechSynthesis.speak(utterance);
                         } else {
+                             // No voice feedback, just update status and continue listening
                              setTimeout(() => {
                                 if (isListeningRef.current) { setVoiceStatus('listening'); }
                             }, 300);
                         }
                     } else {
+                         // No new number found, go back to listening status
                          setTimeout(() => {
                             if (isListeningRef.current) { setVoiceStatus('listening'); }
                         }, 300);
@@ -929,7 +933,7 @@ const App = () => {
         }
 
         isManuallyStoppingRef.current = false;
-        recognitionPausedRef.current = false;
+        isSpeakingRef.current = false;
         lastProcessedNumberRef.current = '';
         setIsListening(true);
         try {
