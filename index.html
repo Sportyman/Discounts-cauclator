@@ -31,9 +31,9 @@
         animation: mic-pulse 2s infinite;
       }
       @keyframes mic-pulse {
-        0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-        70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-        100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        0% { transform: translateY(-50%) scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { transform: translateY(-50%) scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { transform: translateY(-50%) scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
       }
     </style>
     <!-- 
@@ -815,6 +815,21 @@ const App = () => {
         setVoiceStatus('idle');
     };
 
+    const formatPriceForSpeech = (price) => {
+        const prefix = "יוצא ";
+        const fixedPriceStr = price.toFixed(2);
+        const [integerPart, decimalPart] = fixedPriceStr.split('.');
+
+        if (decimalPart === '00') {
+            return prefix + parseInt(integerPart, 10).toLocaleString('he-IL');
+        }
+        if (decimalPart === '50') {
+            return prefix + parseInt(integerPart, 10).toLocaleString('he-IL') + " וחצי";
+        }
+        const formattedInteger = parseInt(integerPart, 10).toLocaleString('he-IL');
+        return `${prefix}${formattedInteger} נקודה ${decimalPart}`;
+    };
+
     const startRecognition = () => {
         if (!recognitionRef.current) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -866,8 +881,8 @@ const App = () => {
 
                         if (isVoiceFeedbackEnabledRef.current) {
                             window.speechSynthesis.cancel();
-                            const formattedPrice = newFinalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                            const utterance = new SpeechSynthesisUtterance(formattedPrice);
+                            const speechText = formatPriceForSpeech(newFinalPrice);
+                            const utterance = new SpeechSynthesisUtterance(speechText);
                             utterance.lang = 'he-IL';
                             window.speechSynthesis.speak(utterance);
                         }
@@ -913,7 +928,7 @@ const App = () => {
       {isHistoryOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
             <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-end items-center mb-6 gap-4">
                     <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
                     <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="סגור היסטוריה"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
@@ -937,9 +952,9 @@ const App = () => {
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-            <div className="flex justify-between items-center mb-6 flex-row-reverse">
-               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="סגור הגדרות"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+            <div className="flex justify-end items-center mb-6 gap-4">
                <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="סגור הגדרות"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
