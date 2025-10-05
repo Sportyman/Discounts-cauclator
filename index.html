@@ -31,9 +31,9 @@
         animation: mic-pulse 2s infinite;
       }
       @keyframes mic-pulse {
-        0% { transform: translateY(-50%) scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-        70% { transform: translateY(-50%) scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-        100% { transform: translateY(-50%) scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
       }
     </style>
     <!-- 
@@ -46,15 +46,6 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
     <!-- Load Babel to transpile TSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
-  }
-}
-</script>
 </head>
 <body class="bg-gray-100">
     <div id="root"></div>
@@ -639,17 +630,15 @@ const App = () => {
   const rapidDeleteIntervalRef = useRef(null);
   const recognitionRef = useRef(null);
   const isManuallyStoppingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
 
   const discountsRef = useRef(discounts);
   const isVoiceFeedbackEnabledRef = useRef(isVoiceFeedbackEnabled);
+  const isListeningRef = useRef(isListening);
 
-  useEffect(() => {
-      discountsRef.current = discounts;
-  }, [discounts]);
-
-  useEffect(() => {
-      isVoiceFeedbackEnabledRef.current = isVoiceFeedbackEnabled;
-  }, [isVoiceFeedbackEnabled]);
+  useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
+  useEffect(() => { discountsRef.current = discounts; }, [discounts]);
+  useEffect(() => { isVoiceFeedbackEnabledRef.current = isVoiceFeedbackEnabled; }, [isVoiceFeedbackEnabled]);
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -790,7 +779,7 @@ const App = () => {
   const clearPrice = executeWithFeedback(() => setPriceStr(''));
 
   const renderOverlay = (isOpen, closeFn) => isOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={closeFn} aria-hidden="true" />
+      <div className="fixed inset-0 bg-black bg-opacity-40 z-[80]" onClick={closeFn} aria-hidden="true" />
   );
 
   const parseSpokenNumber = (spokenText) => {
@@ -848,7 +837,7 @@ const App = () => {
             };
 
             recognition.onend = () => {
-                if (!isManuallyStoppingRef.current) {
+                if (!isManuallyStoppingRef.current && isListeningRef.current) {
                     try {
                         recognition.start();
                     } catch (e) {
@@ -861,9 +850,14 @@ const App = () => {
 
             recognition.onerror = (event) => {
                 console.error('Speech recognition error', event.error);
+                setIsListening(false);
+                setVoiceStatus('idle');
             };
 
             recognition.onresult = (event) => {
+                if (isSpeakingRef.current) {
+                    return; // Ignore recognition results while speaking
+                }
                 setVoiceStatus('processing');
                 const lastResult = event.results[event.results.length - 1];
                 if (lastResult.isFinal) {
@@ -884,12 +878,16 @@ const App = () => {
                             const speechText = formatPriceForSpeech(newFinalPrice);
                             const utterance = new SpeechSynthesisUtterance(speechText);
                             utterance.lang = 'he-IL';
+                            isSpeakingRef.current = true;
+                            utterance.onend = () => {
+                                isSpeakingRef.current = false;
+                            };
                             window.speechSynthesis.speak(utterance);
                         }
                     }
                 }
                 setTimeout(() => {
-                    if (isListening) {
+                    if (isListeningRef.current) {
                         setVoiceStatus('listening');
                     }
                 }, 300);
@@ -926,11 +924,11 @@ const App = () => {
       {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
       
       {isHistoryOpen && (
-        <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsHistoryOpen(false)}>
-            <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-                <div className="flex justify-end items-center mb-6 gap-4">
-                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
+        <div className="fixed inset-0 z-[90] flex justify-start" onClick={() => setIsHistoryOpen(false)}>
+            <div className={`h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
+                <div className="flex justify-start items-center mb-6 gap-4">
                     <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="סגור היסטוריה"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-3 pr-2">
                     {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
@@ -950,11 +948,11 @@ const App = () => {
       )}
       
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
-          <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-            <div className="flex justify-end items-center mb-6 gap-4">
-               <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+        <div className="fixed inset-0 z-[90] flex justify-end" onClick={() => setIsSettingsOpen(false)}>
+          <div className={`h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
+            <div className="flex justify-start items-center mb-6 gap-4">
                <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="סגור הגדרות"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+               <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
