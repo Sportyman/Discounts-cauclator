@@ -45,7 +45,7 @@
     <script type="text/babel">
 // All code from App.tsx and index.tsx is now in here.
 
-const { useState, useMemo, useEffect, useRef } = React;
+const { useState, useMemo, useEffect, useRef, useCallback } = React;
 
 // --- Theme Definitions ---
 const themes = {
@@ -609,15 +609,17 @@ const App = () => {
   // --- NEW, STABLE VOICE RECOGNITION SYSTEM - REBUILT FROM SCRATCH ---
   const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening', 'speaking'
   const [audioLevel, setAudioLevel] = useState(0);
-  const [hebrewVoice, setHebrewVoice] = useState(null);
   
   const recognitionRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const streamRef = useRef(null);
   const animationFrameIdRef = useRef(null);
+  
+  // Using refs to hold latest values for callbacks to avoid stale closures
   const discountsRef = useRef(discounts);
   const isVoiceFeedbackEnabledRef = useRef(isVoiceFeedbackEnabled);
+  const hebrewVoiceRef = useRef(null);
 
   useEffect(() => {
     discountsRef.current = discounts;
@@ -651,150 +653,140 @@ const App = () => {
     return numericPart ? numericPart.join('') : '';
   };
 
-  const speakResult = (priceToSpeak) => {
-    const isWhole = priceToSpeak % 1 === 0;
-    const formattedPrice = isWhole 
-      ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 }) 
-      : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    
-    const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
-    utterance.lang = 'he-IL';
-    if (hebrewVoice) utterance.voice = hebrewVoice;
-    utterance.rate = 1.1;
+  const startListening = useCallback(async () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!recognitionRef.current || !SpeechRecognition) return;
 
-    utterance.onend = () => {
-      setVoiceState('listening'); // Loop back to listening after speaking
-    };
-    utterance.onerror = (e) => {
-      console.error("Speech synthesis error", e);
-      setVoiceState('listening'); // Try to recover by looping back
-    };
+    try {
+        if (!streamRef.current) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            streamRef.current = stream;
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            audioContextRef.current = context;
+            const source = context.createMediaStreamSource(stream);
+            const analyser = context.createAnalyser();
+            analyser.fftSize = 256;
+            source.connect(analyser);
+            analyserRef.current = analyser;
+        
+            const draw = () => {
+                if (analyserRef.current) {
+                    const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+                    analyserRef.current.getByteFrequencyData(dataArray);
+                    const average = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length;
+                    setAudioLevel(Math.min(average / 128, 1));
+                    animationFrameIdRef.current = requestAnimationFrame(draw);
+                }
+            };
+            draw();
+        }
+        recognitionRef.current.start();
+    } catch (err) {
+        console.error("Error accessing microphone:", err);
+        if (err.name === 'NotAllowedError') {
+            alert("נדרשת הרשאת מיקרופון. אנא אפשרו גישה בהגדרות הדפדפן.");
+        }
+        setVoiceState('idle'); // Stop if permissions fail
+    }
+  }, []);
 
-    window.speechSynthesis.cancel(); // Cancel any previous speech
-    window.speechSynthesis.speak(utterance);
-  }
+  const stopListening = useCallback(() => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+    if (animationFrameIdRef.current) {
+      cancelAnimationFrame(animationFrameIdRef.current);
+      animationFrameIdRef.current = null;
+    }
+    window.speechSynthesis.cancel();
+    setAudioLevel(0);
+  }, []);
 
-  // Effect to manage the recognition lifecycle based on voiceState
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognition) return;
 
-    const startListening = async () => {
-      setVoiceState('listening');
-
-      if (!recognitionRef.current) {
+    if (!recognitionRef.current) {
         recognitionRef.current = new SpeechRecognition();
         const recognition = recognitionRef.current;
         recognition.lang = 'he-IL';
-        recognition.continuous = false; // IMPORTANT: Process one result at a time for stability
+        recognition.continuous = false;
         recognition.interimResults = false;
-        
+
         recognition.onresult = (event) => {
-          const transcript = event.results[0][0].transcript.trim();
-          const numberStr = parseSpokenNumber(transcript);
-          if (numberStr) {
-            setPriceStr(numberStr);
+            const transcript = event.results[0][0].transcript.trim();
+            const numberStr = parseSpokenNumber(transcript);
             
-            const price = parseFloat(numberStr) || 0;
-            const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
-                return discount.active ? currentPrice * (1 - discount.value / 100) : currentPrice;
-            }, price);
-            
-            if (isVoiceFeedbackEnabledRef.current) {
-                setVoiceState('speaking'); // Transition to speaking
-                speakResult(calculatedFinalPrice);
+            if (numberStr) {
+                // IMPORTANT: Update UI state first to prevent race conditions
+                setPriceStr(numberStr); 
+                
+                const price = parseFloat(numberStr) || 0;
+                const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
+                    return discount.active ? currentPrice * (1 - discount.value / 100) : currentPrice;
+                }, price);
+                
+                if (isVoiceFeedbackEnabledRef.current) {
+                    setVoiceState('speaking');
+                    const isWhole = calculatedFinalPrice % 1 === 0;
+                    const formattedPrice = isWhole 
+                      ? calculatedFinalPrice.toLocaleString('he-IL', { maximumFractionDigits: 0 }) 
+                      : calculatedFinalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    
+                    const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
+                    utterance.lang = 'he-IL';
+                    if (hebrewVoiceRef.current) utterance.voice = hebrewVoiceRef.current;
+                    utterance.rate = 1.1;
+
+                    utterance.onend = () => setVoiceState('listening'); // Loop back
+                    utterance.onerror = (e) => {
+                        console.error("Speech synthesis error", e);
+                        setVoiceState('listening'); // Try to recover
+                    };
+
+                    window.speechSynthesis.cancel();
+                    window.speechSynthesis.speak(utterance);
+                } else {
+                    // If no feedback, just loop back to listening immediately
+                    setVoiceState('listening');
+                }
             }
-          }
         };
 
         recognition.onend = () => {
-          // If the state is still 'listening', it means recognition ended unexpectedly (e.g. timeout). Restart it.
-          if (voiceState === 'listening') {
-              try {
-                  recognition.start();
-              } catch (e) {
-                  // This can happen if the page is not in focus, ignore.
-              }
-          }
+            // Only restart if we are supposed to be listening.
+            // This prevents restarting after user explicitly stops.
+            if (voiceState === 'listening') {
+                startListening();
+            }
         };
 
         recognition.onerror = (event) => {
-          console.error('Speech Recognition Error:', event.error);
-          // Don't stop for 'no-speech', just let it restart via onend.
-          if (event.error !== 'no-speech' && event.error !== 'aborted') {
-            setVoiceState('idle'); // Stop on critical errors
-          }
-        };
-      }
-
-      // --- Start Audio Visualizer ---
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
-        const context = new (window.AudioContext || window.webkitAudioContext)();
-        audioContextRef.current = context;
-        const source = context.createMediaStreamSource(stream);
-        const analyser = context.createAnalyser();
-        analyser.fftSize = 256;
-        source.connect(analyser);
-        analyserRef.current = analyser;
-        
-        const draw = () => {
-            if (analyserRef.current) {
-                const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
-                analyserRef.current.getByteFrequencyData(dataArray);
-                const average = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length;
-                setAudioLevel(Math.min(average / 128, 1));
-                animationFrameIdRef.current = requestAnimationFrame(draw);
+            console.error('Speech Recognition Error:', event.error);
+            if (event.error !== 'no-speech' && event.error !== 'aborted') {
+                setVoiceState('idle'); // Stop on critical errors
             }
         };
-        draw();
-        
-        recognitionRef.current.start();
-      } catch(err) {
-        console.error("Error accessing microphone:", err);
-        if (err.name === 'NotAllowedError') {
-          alert("נדרשת הרשאת מיקרופון. אנא אפשרו גישה בהגדרות הדפדפן.");
-        }
-        setVoiceState('idle');
-      }
-    };
-    
-    const stopListening = () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close();
-      }
-      if (animationFrameIdRef.current) {
-        cancelAnimationFrame(animationFrameIdRef.current);
-      }
-      window.speechSynthesis.cancel();
-      setAudioLevel(0);
-    };
-
-    if (voiceState === 'listening') {
-      startListening();
-    } else {
-      stopListening();
     }
     
-    // Cleanup on component unmount
+    if (voiceState === 'listening') {
+        startListening();
+    } else {
+        stopListening();
+    }
+    
     return () => {
-      stopListening();
-      if(recognitionRef.current) {
-        recognitionRef.current.onresult = null;
-        recognitionRef.current.onend = null;
-        recognitionRef.current.onerror = null;
-        recognitionRef.current = null;
-      }
+        stopListening();
     };
-  }, [voiceState, hebrewVoice]); // Rerun effect only when state changes
+  }, [voiceState, startListening, stopListening]);
 
   const handleVoiceButtonClick = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -802,7 +794,6 @@ const App = () => {
         alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
         return;
     }
-    // This is now just a simple toggle
     setVoiceState(current => (current === 'idle' ? 'listening' : 'idle'));
   };
 
@@ -818,8 +809,7 @@ const App = () => {
         const voices = window.speechSynthesis.getVoices();
         const hebrewGoogleVoice = voices.find(voice => voice.lang === 'he-IL' && voice.name.includes('Google'));
         const hebrewDefaultVoice = voices.find(voice => voice.lang === 'he-IL');
-        const bestVoice = hebrewGoogleVoice || hebrewDefaultVoice || null;
-        setHebrewVoice(bestVoice);
+        hebrewVoiceRef.current = hebrewGoogleVoice || hebrewDefaultVoice || null;
     };
 
     loadVoices();
