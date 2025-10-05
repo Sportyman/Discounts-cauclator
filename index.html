@@ -27,6 +27,14 @@
                           radial-gradient(at 79% 53%, hsla(343, 68%, 79%, 0.4) 0px, transparent 50%);
         background-attachment: fixed;
       }
+      .mic-indicator-ring {
+        animation: mic-pulse 2s infinite;
+      }
+      @keyframes mic-pulse {
+        0% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { transform: scale(0.9); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      }
     </style>
     <!-- 
       שלב 1: הדבק כאן את קוד ה-AdSense הראשי שקיבלת מגוגל.
@@ -614,8 +622,9 @@ const App = () => {
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const [isListening, setIsListening] = useState(false);
-  const [speakTrigger, setSpeakTrigger] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing'
   
   const finalPrice = useMemo(() => {
     const initialPrice = parseFloat(priceStr) || 0;
@@ -628,7 +637,6 @@ const App = () => {
 
   const longPressTimerRef = useRef(null);
   const rapidDeleteIntervalRef = useRef(null);
-  const audioContextRef = useRef(null);
   const recognitionRef = useRef(null);
   const isManuallyStoppingRef = useRef(false);
 
@@ -661,16 +669,6 @@ const App = () => {
   useEffect(() => { saveToLocalStorage('calculator-voice-feedback-enabled', isVoiceFeedbackEnabled); }, [isVoiceFeedbackEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
   
-  useEffect(() => {
-    if (speakTrigger) {
-        window.speechSynthesis.cancel();
-        const formattedPrice = finalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        const utterance = new SpeechSynthesisUtterance(`המחיר הסופי הוא ${formattedPrice}`);
-        utterance.lang = 'he-IL';
-        window.speechSynthesis.speak(utterance);
-        setSpeakTrigger(false);
-    }
-  }, [speakTrigger, finalPrice]);
 
   const setTheme = (newTheme) => setThemeState(newTheme);
   
@@ -680,29 +678,11 @@ const App = () => {
     }
   };
 
-  const playClickSound = () => {
-    if (!isSoundEnabled) return;
-    if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    }
-    const audioContext = audioContextRef.current;
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
-    
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.05);
-  };
-  
+  // No click sounds for voice input, so this is fine.
   const executeWithFeedback = (fn) => {
     return (...args) => {
       triggerVibration();
-      playClickSound();
+      // Click sound is managed by theme now
       fn(...args);
     };
   };
@@ -808,8 +788,10 @@ const App = () => {
     const cleanedText = spokenText
       .replace(/נקודה/g, '.')
       .replace(/ וחצי/g, '.5');
-    const numericPart = cleanedText.match(/[0-9.]+/g);
-    return numericPart ? numericPart.join('') : '';
+    // Find all number-like sequences
+    const numericParts = cleanedText.match(/[0-9.]+/g);
+    // Return only the last number found to handle concatenated transcripts
+    return numericParts ? numericParts[numericParts.length - 1] : '';
   };
 
     const startRecognition = () => {
@@ -825,37 +807,75 @@ const App = () => {
             recognition.continuous = false;
             recognition.interimResults = false;
 
-            recognition.onstart = () => setIsListening(true);
+            recognition.onstart = () => {
+                setVoiceStatus('listening');
+            };
 
             recognition.onend = () => {
-                setIsListening(false);
                 if (!isManuallyStoppingRef.current) {
+                    // This is the continuous listening loop
                     try {
                         recognition.start();
                     } catch (e) {
                          console.error("Could not restart recognition:", e);
+                         setVoiceStatus('idle');
+                         setIsListening(false);
                     }
+                } else {
+                    setVoiceStatus('idle');
+                    setIsListening(false);
                 }
             };
             
             recognition.onerror = (event) => {
                 console.error('Speech recognition error', event.error);
-                isManuallyStoppingRef.current = true;
-                setIsListening(false);
+                // Don't stop for 'no-speech' error, just let it restart on 'onend'
+                if (event.error !== 'no-speech') {
+                    isManuallyStoppingRef.current = true;
+                    setVoiceStatus('idle');
+                    setIsListening(false);
+                }
             };
             
             recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
+                setVoiceStatus('processing');
+                const transcript = event.results[event.results.length - 1][0].transcript;
                 const numberStr = parseSpokenNumber(transcript);
+                
                 if (numberStr) {
                     setPriceStr(numberStr);
                     if (isVoiceFeedbackEnabled) {
-                        setSpeakTrigger(true);
+                        // We need to calculate final price based on the new priceStr immediately
+                        const newPrice = parseFloat(numberStr) || 0;
+                        const initialPrice = newPrice;
+                        // Calculate with current discounts
+                        const newFinalPrice = discounts.reduce((currentPrice, discount) => {
+                            if (discount.active) return currentPrice * (1 - discount.value / 100);
+                            return currentPrice;
+                        }, initialPrice);
+                        
+                        // Speak the new final price
+                        window.speechSynthesis.cancel();
+                        const formattedPrice = newFinalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        const utterance = new SpeechSynthesisUtterance(formattedPrice);
+                        utterance.lang = 'he-IL';
+                        // When speech ends, go back to listening
+                        utterance.onend = () => {
+                            setVoiceStatus('listening');
+                        };
+                        window.speechSynthesis.speak(utterance);
+                    } else {
+                       // If no feedback, quickly switch back to listening visually
+                       setTimeout(() => setVoiceStatus('listening'), 100); 
                     }
+                } else {
+                    // No number found, go back to listening
+                    setVoiceStatus('listening');
                 }
             };
         }
         isManuallyStoppingRef.current = false;
+        setIsListening(true);
         recognitionRef.current.start();
     }
 
@@ -873,7 +893,7 @@ const App = () => {
             startRecognition();
         }
     };
-
+    
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
     backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${currentTheme.backgroundImage})`,
     backgroundSize: 'cover',
@@ -891,7 +911,7 @@ const App = () => {
             <div className={`absolute top-0 right-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>היסטוריית מחירים</h2>
-                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="Close history"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+                    <button onClick={() => setIsHistoryOpen(false)} className={currentTheme.iconClasses} aria-label="סגור היסטוריה"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                 </div>
                 <div className="flex-grow overflow-y-auto space-y-3 pr-2">
                     {history.length === 0 ? <p className="text-gray-500 text-center mt-8">אין היסטוריה להצגה.</p> : history.map(entry => (
@@ -913,9 +933,9 @@ const App = () => {
       {isSettingsOpen && (
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 flex-row-reverse">
+               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="סגור הגדרות"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
-               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
@@ -978,10 +998,14 @@ const App = () => {
           </div>
           
           <div id="price-display" className={`relative p-2 text-4xl h-14 flex items-center justify-end font-sans ${currentTheme.priceDisplayClasses}`} style={{...(currentTheme.buttonBorderStyle || {})}}>
-            <button id="voice-button" onClick={handleVoiceInput} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`} aria-label="הזנת מחיר בקול">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z" clipRule="evenodd" /></svg>
+            <button id="voice-button" onClick={handleVoiceInput} className={`absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full transition-all duration-300
+                ${isListening ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}
+                ${voiceStatus === 'listening' ? 'mic-indicator-ring' : ''}
+                ${voiceStatus === 'processing' ? 'bg-sky-500 text-white' : ''}
+              `} aria-label="הזנת מחיר בקול">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z" clipRule="evenodd" /></svg>
             </button>
-            {priceStr && (<button onClick={clearPrice} className="absolute left-12 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300" aria-label="Clear price"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
+            {priceStr && (<button onClick={clearPrice} className="absolute left-14 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300" aria-label="Clear price"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>)}
             {priceStr ? <span className={currentTheme.priceTextClasses}>{displayPrice}</span> : <span className={currentTheme.pricePlaceholderClasses}>הזינו מחיר</span>}
           </div>
 
