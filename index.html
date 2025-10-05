@@ -637,7 +637,6 @@ const App = () => {
   const recognitionRef = useRef(null);
   const continuousListeningDesiredRef = useRef(false);
 
-  // Ref to track the current voice state to avoid stale closures in event handlers
   const voiceStateRef = useRef(voiceState);
   useEffect(() => {
     voiceStateRef.current = voiceState;
@@ -824,115 +823,120 @@ const App = () => {
     return numericPart ? numericPart.join('') : '';
   };
 
-  const stopAllVoiceActivity = () => {
-    continuousListeningDesiredRef.current = false;
-    if (recognitionRef.current) {
-        recognitionRef.current.onend = null; // Prevent restart on manual stop
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
-    }
-    window.speechSynthesis.cancel();
-    setVoiceState('idle');
-  };
+    const stopAllVoiceActivity = () => {
+        continuousListeningDesiredRef.current = false;
+        if (recognitionRef.current) {
+            recognitionRef.current.onend = null;
+            recognitionRef.current.abort();
+            recognitionRef.current = null;
+        }
+        window.speechSynthesis.cancel();
+        setVoiceState('idle');
+    };
 
-  const speakPrice = (priceToSpeak) => {
-      window.speechSynthesis.cancel();
+    const startRecognition = () => {
+        if (!continuousListeningDesiredRef.current || recognitionRef.current) {
+            return;
+        }
 
-      const isWholeNumber = priceToSpeak % 1 === 0;
-      const formattedPriceToSpeak = isWholeNumber 
-          ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-          : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
+            stopAllVoiceActivity();
+            return;
+        }
 
-      const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
-      utterance.lang = 'he-IL';
-      if (hebrewVoice) {
-          utterance.voice = hebrewVoice;
-      }
-      utterance.rate = 1.2;
+        const recognition = new SpeechRecognition();
+        recognitionRef.current = recognition;
+        recognition.lang = 'he-IL';
+        recognition.continuous = false; // Process one utterance at a time for better control
+        recognition.interimResults = false;
 
-      utterance.onstart = () => {
-          setVoiceState('speaking');
-      };
-      const onDone = () => {
-            if (voiceStateRef.current === 'speaking') {
-              if (continuousListeningDesiredRef.current) {
-                  setVoiceState('listening');
-              } else {
-                  setVoiceState('idle');
-              }
-          }
-      };
-      utterance.onend = onDone;
-      utterance.onerror = (e) => {
-          console.error("Speech synthesis error", e);
-          onDone();
-      }
-      window.speechSynthesis.speak(utterance);
-  };
+        recognition.onstart = () => {
+            setVoiceState('listening');
+        };
 
-  const startContinuousRecognition = () => {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-          alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
-          continuousListeningDesiredRef.current = false;
-          return;
-      }
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            if (event.error !== 'aborted' && event.error !== 'no-speech') {
+                stopAllVoiceActivity();
+            }
+        };
+        
+        recognition.onend = () => {
+            recognitionRef.current = null;
+            if (continuousListeningDesiredRef.current && voiceStateRef.current !== 'speaking') {
+                startRecognition(); // Relisten if continuous mode is on and we are not speaking
+            } else if (!continuousListeningDesiredRef.current) {
+                setVoiceState('idle');
+            }
+        };
 
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.lang = 'he-IL';
-      recognition.continuous = true;
-      recognition.interimResults = false;
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.trim();
+            if (!transcript) return;
+            
+            const numberStr = parseSpokenNumber(transcript);
+            if (!numberStr) return;
+            
+            setPriceStr(numberStr);
+            
+            const price = parseFloat(numberStr) || 0;
+            const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
+                if (discount.active) return currentPrice * (1 - discount.value / 100);
+                return currentPrice;
+            }, price);
 
-      recognition.onstart = () => {
-          setVoiceState('listening');
-      };
+            if (isVoiceFeedbackEnabled) {
+                speakPrice(calculatedFinalPrice);
+            }
+        };
 
-      recognition.onerror = (event) => {
-          console.error('Speech recognition error:', event.error);
-      };
-      
-      recognition.onend = () => {
-          if (continuousListeningDesiredRef.current) {
-              console.log("Recognition session ended, restarting for continuous mode.");
-              recognition.start();
-          } else {
-              recognitionRef.current = null;
-              setVoiceState('idle');
-          }
-      };
+        recognition.start();
+    };
 
-      recognition.onresult = (event) => {
-          const transcript = event.results[event.results.length - 1][0].transcript.trim();
-          if (!transcript) return;
-          
-          const numberStr = parseSpokenNumber(transcript);
-          if (!numberStr) return;
-          
-          setPriceStr(numberStr);
-          
-          const price = parseFloat(numberStr) || 0;
-          const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
-              if (discount.active) return currentPrice * (1 - discount.value / 100);
-              return currentPrice;
-          }, price);
+    const speakPrice = (priceToSpeak) => {
+        window.speechSynthesis.cancel();
 
-          if (isVoiceFeedbackEnabled) {
-              speakPrice(calculatedFinalPrice);
-          }
-      };
+        const isWholeNumber = priceToSpeak % 1 === 0;
+        const formattedPriceToSpeak = isWholeNumber 
+            ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+            : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-      recognition.start();
-  }
+        const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPriceToSpeak}`);
+        utterance.lang = 'he-IL';
+        if (hebrewVoice) {
+            utterance.voice = hebrewVoice;
+        }
+        utterance.rate = 1.2;
+
+        utterance.onstart = () => {
+            setVoiceState('speaking');
+        };
+
+        const onDone = () => {
+            if (continuousListeningDesiredRef.current) {
+                startRecognition(); // Restart listening after speaking
+            } else {
+                setVoiceState('idle');
+            }
+        };
+        utterance.onend = onDone;
+        utterance.onerror = (e) => {
+            console.error("Speech synthesis error", e);
+            onDone(); // Always try to continue the loop
+        };
+        window.speechSynthesis.speak(utterance);
+    };
   
-  const handleVoiceInput = () => {
-      if (voiceStateRef.current !== 'idle') {
-          stopAllVoiceActivity();
-      } else {
-          continuousListeningDesiredRef.current = true;
-          startContinuousRecognition();
-      }
-  };
+    const handleVoiceInput = () => {
+        if (voiceStateRef.current !== 'idle') {
+            stopAllVoiceActivity();
+        } else {
+            continuousListeningDesiredRef.current = true;
+            startRecognition();
+        }
+    };
 
 
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
