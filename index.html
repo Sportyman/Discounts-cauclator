@@ -426,7 +426,8 @@ const getFromLocalStorage = (key, defaultValue) => {
 const saveToLocalStorage = (key, value) => {
     try {
       localStorage.setItem(key, JSON.stringify(value));
-    } catch (error) {
+    } catch (error)
+{
       console.error(`Could not save to localStorage key "${key}":`, error);
     }
 };
@@ -615,6 +616,7 @@ const App = () => {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening', 'speaking'
+  const [audioLevel, setAudioLevel] = useState(0);
   const [hebrewVoice, setHebrewVoice] = useState(null);
   
   const finalPrice = useMemo(() => {
@@ -626,15 +628,27 @@ const App = () => {
     }, initialPrice);
   }, [priceStr, discounts]);
 
+  const voiceButtonShadow = useMemo(() => {
+    if (voiceState !== 'listening' || audioLevel < 0.05) return 'none';
+    const spread = Math.round(audioLevel * 12); // spread radius from 0 to 12px
+    const alpha = (0.3 + audioLevel * 0.4).toFixed(2); // opacity from 0.3 to 0.7
+    return `0 0 0 ${spread}px rgba(239, 68, 68, ${alpha})`; // red-500 with variable alpha
+  }, [voiceState, audioLevel]);
+
 
   const longPressTimerRef = useRef(null);
   const rapidDeleteIntervalRef = useRef(null);
   const audioContextRef = useRef(null);
   
-  // --- New Robust Voice Recognition System (Rebuilt) ---
+  // --- New Robust Voice Recognition System (Rebuilt from scratch) ---
   const recognitionRef = useRef(null);
   const priceToSpeakRef = useRef(0);
   const discountsRef = useRef(discounts);
+  const audioContextVisualizerRef = useRef(null);
+  const analyserRef = useRef(null);
+  const streamRef = useRef(null);
+  const sourceRef = useRef(null);
+  const animationFrameIdRef = useRef(null);
   
   useEffect(() => {
     discountsRef.current = discounts;
@@ -643,96 +657,141 @@ const App = () => {
   // Main effect to manage the voice recognition lifecycle
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        return;
-    }
+    if (!SpeechRecognition) return;
+
+    const cleanup = () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.onresult = null;
+        recognitionRef.current.onend = null;
+        recognitionRef.current.onerror = null;
+        recognitionRef.current.abort();
+        recognitionRef.current = null;
+      }
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      if (audioContextVisualizerRef.current && audioContextVisualizerRef.current.state !== 'closed') {
+        audioContextVisualizerRef.current.close();
+        audioContextVisualizerRef.current = null;
+      }
+      sourceRef.current = null;
+      analyserRef.current = null;
+      setAudioLevel(0);
+      window.speechSynthesis.cancel();
+    };
 
     if (voiceState === 'listening') {
-        recognitionRef.current = new SpeechRecognition();
-        const recognition = recognitionRef.current;
-        recognition.lang = 'he-IL';
-        recognition.continuous = false;
-        recognition.interimResults = false;
+      const startListening = async () => {
+        try {
+          // 1. Get audio stream for visualizer
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          streamRef.current = stream;
+          
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          audioContextVisualizerRef.current = audioContext;
 
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript.trim();
-            const numberStr = parseSpokenNumber(transcript);
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyserRef.current = analyser;
 
-            if (numberStr) {
+          const source = audioContext.createMediaStreamSource(stream);
+          source.connect(analyser);
+          sourceRef.current = source;
+          
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          const draw = () => {
+            if (!analyserRef.current) return;
+            analyserRef.current.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length;
+            const normalized = Math.min(average / 128, 1);
+            setAudioLevel(normalized);
+            animationFrameIdRef.current = requestAnimationFrame(draw);
+          };
+          draw();
+
+          // 2. Start Speech Recognition
+          recognitionRef.current = new SpeechRecognition();
+          const recognition = recognitionRef.current;
+          recognition.lang = 'he-IL';
+          recognition.continuous = true;
+          recognition.interimResults = false;
+
+          recognition.onresult = (event) => {
+            const lastResult = event.results[event.results.length - 1];
+            if (lastResult.isFinal) {
+              const transcript = lastResult[0].transcript.trim();
+              const numberStr = parseSpokenNumber(transcript);
+              
+              if (numberStr) {
                 setPriceStr(numberStr);
-                
                 const price = parseFloat(numberStr) || 0;
                 const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
-                    if (discount.active) return currentPrice * (1 - discount.value / 100);
-                    return currentPrice;
+                  if (discount.active) return currentPrice * (1 - discount.value / 100);
+                  return currentPrice;
                 }, price);
 
                 if (isVoiceFeedbackEnabled) {
-                    priceToSpeakRef.current = calculatedFinalPrice;
-                    setVoiceState('speaking');
+                  priceToSpeakRef.current = calculatedFinalPrice;
+                  setVoiceState('speaking');
                 }
+              }
             }
-        };
+          };
 
-        recognition.onend = () => {
-            if (voiceState === 'listening') {
-                try {
-                    recognition.start();
-                } catch(e) {
-                    console.info("Recognition could not restart automatically.", e.message);
-                }
+          recognition.onend = () => {
+            if (voiceState === 'listening' && recognitionRef.current) {
+              try { recognitionRef.current.start(); }
+              catch(e) { console.error("Recognition restart failed", e); setVoiceState('idle'); }
             }
-        };
-        
-        recognition.onerror = (event) => {
+          };
+
+          recognition.onerror = (event) => {
             console.error('Recognition Error:', event.error);
             if (event.error !== 'no-speech' && event.error !== 'aborted') {
-                setVoiceState('idle'); 
+              setVoiceState('idle');
             }
-        };
-        
-        try {
-            recognition.start();
-        } catch(e) {
-            console.error("Could not start recognition:", e);
-            setVoiceState('idle');
-        }
+          };
+          
+          recognition.start();
 
+        } catch (err) {
+          console.error("Error starting voice recognition:", err);
+          if (err.name === 'NotAllowedError') {
+             alert("נדרשת הרשאת מיקרופון. אנא אפשרו גישה בהגדרות הדפדפן.");
+          }
+          setVoiceState('idle');
+        }
+      };
+      startListening();
     } else if (voiceState === 'speaking') {
-        const priceToSpeak = priceToSpeakRef.current;
-        const isWholeNumber = priceToSpeak % 1 === 0;
-        const formattedPrice = isWholeNumber 
-            ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-            : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        
-        const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
-        utterance.lang = 'he-IL';
-        if (hebrewVoice) {
-            utterance.voice = hebrewVoice;
-        }
-        utterance.rate = 1.1;
+      if (recognitionRef.current) { recognitionRef.current.stop(); }
+      
+      const priceToSpeak = priceToSpeakRef.current;
+      const isWholeNumber = priceToSpeak % 1 === 0;
+      const formattedPrice = isWholeNumber 
+        ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+        : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      
+      const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
+      utterance.lang = 'he-IL';
+      if (hebrewVoice) utterance.voice = hebrewVoice;
+      utterance.rate = 1.1;
 
-        utterance.onend = () => {
-            setVoiceState('listening');
-        };
-        
-        utterance.onerror = (e) => {
-            console.error("Speech synthesis error", e);
-            setVoiceState('listening');
-        };
+      utterance.onend = () => setVoiceState('listening');
+      utterance.onerror = (e) => {
+        console.error("Speech synthesis error", e);
+        setVoiceState('listening');
+      };
 
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.speak(utterance);
     }
 
-    return () => {
-        if (recognitionRef.current) {
-            recognitionRef.current.onend = null; 
-            recognitionRef.current.abort();
-            recognitionRef.current = null;
-        }
-        window.speechSynthesis.cancel();
-    };
+    return cleanup;
   }, [voiceState, isVoiceFeedbackEnabled, hebrewVoice]);
 
   const handleVoiceButtonClick = () => {
@@ -742,11 +801,7 @@ const App = () => {
         return;
     }
     
-    if (voiceState === 'idle') {
-        setVoiceState('listening');
-    } else {
-        setVoiceState('idle');
-    }
+    setVoiceState(current => (current === 'idle' ? 'listening' : 'idle'));
   };
 
 
@@ -1037,11 +1092,13 @@ const App = () => {
           </div>
           
           <div id="price-display" className={`relative p-2 text-4xl h-14 flex items-center justify-end font-sans ${currentTheme.priceDisplayClasses}`} style={{...(currentTheme.buttonBorderStyle || {})}}>
-            <button id="voice-button" onClick={handleVoiceButtonClick} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 ${
-                voiceState === 'listening' ? 'bg-red-500 text-white animate-pulse' : 
+            <button id="voice-button" onClick={handleVoiceButtonClick} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 transition-shadow duration-100 ease-out ${
+                voiceState === 'listening' ? 'bg-red-500 text-white' : 
                 voiceState === 'speaking' ? 'bg-blue-500 text-white' :
                 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-              }`} aria-label="הזנת מחיר בקול">
+              }`} 
+              style={{ boxShadow: voiceButtonShadow }}
+              aria-label="הזנת מחיר בקול">
               {voiceState === 'speaking' ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
               ) : (
