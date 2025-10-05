@@ -615,9 +615,22 @@ const App = () => {
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening', 'speaking'
+  
+  // --- New, Rebuilt Voice Recognition System ---
+  const [voiceState, setVoiceState] = useState('idle'); // 'idle', 'listening'
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [hebrewVoice, setHebrewVoice] = useState(null);
+  
+  const recognitionRef = useRef(null);
+  const audioContextVisualizerRef = useRef(null);
+  const animationFrameIdRef = useRef(null);
+  const streamRef = useRef(null);
+  const discountsRef = useRef(discounts);
+  const isVoiceFeedbackEnabledRef = useRef(isVoiceFeedbackEnabled);
+
+  useEffect(() => { discountsRef.current = discounts; }, [discounts]);
+  useEffect(() => { isVoiceFeedbackEnabledRef.current = isVoiceFeedbackEnabled; }, [isVoiceFeedbackEnabled]);
   
   const finalPrice = useMemo(() => {
     const initialPrice = parseFloat(priceStr) || 0;
@@ -640,24 +653,21 @@ const App = () => {
   const rapidDeleteIntervalRef = useRef(null);
   const audioContextRef = useRef(null);
   
-  // --- New Robust Voice Recognition System (Rebuilt from scratch) ---
-  const recognitionRef = useRef(null);
-  const priceToSpeakRef = useRef(0);
-  const discountsRef = useRef(discounts);
-  const audioContextVisualizerRef = useRef(null);
-  const analyserRef = useRef(null);
-  const streamRef = useRef(null);
-  const sourceRef = useRef(null);
-  const animationFrameIdRef = useRef(null);
-  
-  useEffect(() => {
-    discountsRef.current = discounts;
-  }, [discounts]);
+  const parseSpokenNumber = (spokenText) => {
+    const cleanedText = spokenText
+      .replace(/נקודה/g, '.')
+      .replace(/ וחצי/g, '.5');
+    const numericPart = cleanedText.match(/[0-9.]+/g);
+    return numericPart ? numericPart.join('') : '';
+  };
 
   // Main effect to manage the voice recognition lifecycle
   useEffect(() => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
+    if (!SpeechRecognition) {
+      console.warn("Speech Recognition not supported");
+      return;
+    }
 
     const cleanup = () => {
       if (recognitionRef.current) {
@@ -679,34 +689,30 @@ const App = () => {
         audioContextVisualizerRef.current.close();
         audioContextVisualizerRef.current = null;
       }
-      sourceRef.current = null;
-      analyserRef.current = null;
       setAudioLevel(0);
       window.speechSynthesis.cancel();
+      setIsSpeaking(false);
     };
 
     if (voiceState === 'listening') {
       const startListening = async () => {
         try {
-          // 1. Get audio stream for visualizer
+          cleanup(); // Ensure everything is clean before starting
+
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           streamRef.current = stream;
           
           const audioContext = new (window.AudioContext || window.webkitAudioContext)();
           audioContextVisualizerRef.current = audioContext;
-
           const analyser = audioContext.createAnalyser();
           analyser.fftSize = 256;
-          analyserRef.current = analyser;
-
           const source = audioContext.createMediaStreamSource(stream);
           source.connect(analyser);
-          sourceRef.current = source;
           
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
           const draw = () => {
-            if (!analyserRef.current) return;
-            analyserRef.current.getByteFrequencyData(dataArray);
+            if (!analyser) return;
+            analyser.getByteFrequencyData(dataArray);
             const average = dataArray.reduce((acc, val) => acc + val, 0) / dataArray.length;
             const normalized = Math.min(average / 128, 1);
             setAudioLevel(normalized);
@@ -714,7 +720,6 @@ const App = () => {
           };
           draw();
 
-          // 2. Start Speech Recognition
           recognitionRef.current = new SpeechRecognition();
           const recognition = recognitionRef.current;
           recognition.lang = 'he-IL';
@@ -728,16 +733,35 @@ const App = () => {
               const numberStr = parseSpokenNumber(transcript);
               
               if (numberStr) {
-                setPriceStr(numberStr);
+                setPriceStr(numberStr); // Update the price string state
+                
+                // Immediately calculate the final price with the new price string
                 const price = parseFloat(numberStr) || 0;
                 const calculatedFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
                   if (discount.active) return currentPrice * (1 - discount.value / 100);
                   return currentPrice;
                 }, price);
+                
+                // Speak the result if enabled
+                if (isVoiceFeedbackEnabledRef.current) {
+                  window.speechSynthesis.cancel(); // Cancel previous speech
+                  setIsSpeaking(true);
+                  const isWholeNumber = calculatedFinalPrice % 1 === 0;
+                  const formattedPrice = isWholeNumber 
+                    ? calculatedFinalPrice.toLocaleString('he-IL', { maximumFractionDigits: 0 })
+                    : calculatedFinalPrice.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  
+                  const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
+                  utterance.lang = 'he-IL';
+                  if (hebrewVoice) utterance.voice = hebrewVoice;
+                  utterance.rate = 1.1;
 
-                if (isVoiceFeedbackEnabled) {
-                  priceToSpeakRef.current = calculatedFinalPrice;
-                  setVoiceState('speaking');
+                  utterance.onend = () => setIsSpeaking(false);
+                  utterance.onerror = (e) => {
+                    console.error("Speech synthesis error", e);
+                    setIsSpeaking(false);
+                  };
+                  window.speechSynthesis.speak(utterance);
                 }
               }
             }
@@ -768,31 +792,10 @@ const App = () => {
         }
       };
       startListening();
-    } else if (voiceState === 'speaking') {
-      if (recognitionRef.current) { recognitionRef.current.stop(); }
-      
-      const priceToSpeak = priceToSpeakRef.current;
-      const isWholeNumber = priceToSpeak % 1 === 0;
-      const formattedPrice = isWholeNumber 
-        ? priceToSpeak.toLocaleString('he-IL', { maximumFractionDigits: 0 })
-        : priceToSpeak.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      
-      const utterance = new SpeechSynthesisUtterance(`יוצא ${formattedPrice}`);
-      utterance.lang = 'he-IL';
-      if (hebrewVoice) utterance.voice = hebrewVoice;
-      utterance.rate = 1.1;
-
-      utterance.onend = () => setVoiceState('listening');
-      utterance.onerror = (e) => {
-        console.error("Speech synthesis error", e);
-        setVoiceState('listening');
-      };
-
-      window.speechSynthesis.speak(utterance);
     }
 
     return cleanup;
-  }, [voiceState, isVoiceFeedbackEnabled, hebrewVoice]);
+  }, [voiceState, hebrewVoice]);
 
   const handleVoiceButtonClick = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -800,10 +803,8 @@ const App = () => {
         alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
         return;
     }
-    
     setVoiceState(current => (current === 'idle' ? 'listening' : 'idle'));
   };
-
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -979,14 +980,6 @@ const App = () => {
       <div className="fixed inset-0 bg-black bg-opacity-40 z-40" onClick={closeFn} aria-hidden="true" />
   );
 
-  const parseSpokenNumber = (spokenText) => {
-    const cleanedText = spokenText
-      .replace(/נקודה/g, '.')
-      .replace(/ וחצי/g, '.5');
-    const numericPart = cleanedText.match(/[0-9.]+/g);
-    return numericPart ? numericPart.join('') : '';
-  };
-
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
     backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${currentTheme.backgroundImage})`,
     backgroundSize: 'cover',
@@ -1093,13 +1086,13 @@ const App = () => {
           
           <div id="price-display" className={`relative p-2 text-4xl h-14 flex items-center justify-end font-sans ${currentTheme.priceDisplayClasses}`} style={{...(currentTheme.buttonBorderStyle || {})}}>
             <button id="voice-button" onClick={handleVoiceButtonClick} className={`absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center rounded-full transition-all duration-300 transition-shadow duration-100 ease-out ${
-                voiceState === 'listening' ? 'bg-red-500 text-white' : 
-                voiceState === 'speaking' ? 'bg-blue-500 text-white' :
+                isSpeaking ? 'bg-blue-500 text-white' :
+                voiceState === 'listening' ? 'bg-red-500 text-white' :
                 'bg-gray-200 text-gray-600 hover:bg-gray-300'
               }`} 
               style={{ boxShadow: voiceButtonShadow }}
               aria-label="הזנת מחיר בקול">
-              {voiceState === 'speaking' ? (
+              {isSpeaking ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
               ) : (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z" clipRule="evenodd" /></svg>
