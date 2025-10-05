@@ -607,14 +607,13 @@ const App = () => {
   const [history, setHistory] = useState(() => getFromLocalStorage('calculator-history', []));
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => getFromLocalStorage('calculator-sound-enabled', false));
   const [isVibrationEnabled, setIsVibrationEnabled] = useState(() => getFromLocalStorage('calculator-vibration-enabled', true));
-  const [isAccessibilityEnabled, setIsAccessibilityEnabled] = useState(() => getFromLocalStorage('calculator-accessibility-enabled', false));
+  const [isVoiceFeedbackEnabled, setIsVoiceFeedbackEnabled] = useState(() => getFromLocalStorage('calculator-voice-feedback-enabled', true));
   const [useImageBackground, setUseImageBackground] = useState(() => getFromLocalStorage('calculator-image-background-enabled', true));
   const [isTutorialActive, setIsTutorialActive] = useState(false);
   
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [announcement, setAnnouncement] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [speakTrigger, setSpeakTrigger] = useState(false);
   
@@ -631,6 +630,7 @@ const App = () => {
   const rapidDeleteIntervalRef = useRef(null);
   const audioContextRef = useRef(null);
   const recognitionRef = useRef(null);
+  const isManuallyStoppingRef = useRef(false);
 
   useEffect(() => {
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
@@ -658,19 +658,8 @@ const App = () => {
   useEffect(() => { saveToLocalStorage('calculator-theme', theme); }, [theme]);
   useEffect(() => { saveToLocalStorage('calculator-sound-enabled', isSoundEnabled); }, [isSoundEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-vibration-enabled', isVibrationEnabled); }, [isVibrationEnabled]);
-  useEffect(() => { saveToLocalStorage('calculator-accessibility-enabled', isAccessibilityEnabled); }, [isAccessibilityEnabled]);
+  useEffect(() => { saveToLocalStorage('calculator-voice-feedback-enabled', isVoiceFeedbackEnabled); }, [isVoiceFeedbackEnabled]);
   useEffect(() => { saveToLocalStorage('calculator-image-background-enabled', useImageBackground); }, [useImageBackground]);
-  
-  useEffect(() => {
-    if (isAccessibilityEnabled && priceStr) {
-      const finalPriceValue = finalPrice;
-      const timer = setTimeout(() => {
-        const formattedPrice = finalPriceValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        setAnnouncement(`המחיר הסופי הוא ${formattedPrice} שקלים`);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [priceStr, discounts, isAccessibilityEnabled, finalPrice]);
   
   useEffect(() => {
     if (speakTrigger) {
@@ -823,44 +812,67 @@ const App = () => {
     return numericPart ? numericPart.join('') : '';
   };
 
-  const handleVoiceInput = () => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
-      return;
+    const startRecognition = () => {
+        if (!recognitionRef.current) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert('זיהוי דיבור אינו נתמך בדפדפן זה.');
+                return;
+            }
+            recognitionRef.current = new SpeechRecognition();
+            const recognition = recognitionRef.current;
+            recognition.lang = 'he-IL';
+            recognition.continuous = false;
+            recognition.interimResults = false;
+
+            recognition.onstart = () => setIsListening(true);
+
+            recognition.onend = () => {
+                setIsListening(false);
+                if (!isManuallyStoppingRef.current) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                         console.error("Could not restart recognition:", e);
+                    }
+                }
+            };
+            
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error', event.error);
+                isManuallyStoppingRef.current = true;
+                setIsListening(false);
+            };
+            
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript;
+                const numberStr = parseSpokenNumber(transcript);
+                if (numberStr) {
+                    setPriceStr(numberStr);
+                    if (isVoiceFeedbackEnabled) {
+                        setSpeakTrigger(true);
+                    }
+                }
+            };
+        }
+        isManuallyStoppingRef.current = false;
+        recognitionRef.current.start();
     }
 
-    if (isListening) {
-      recognitionRef.current?.stop();
-      return;
+    const stopRecognition = () => {
+        if (recognitionRef.current) {
+            isManuallyStoppingRef.current = true;
+            recognitionRef.current.stop();
+        }
     }
 
-    const recognition = recognitionRef.current || new SpeechRecognition();
-    recognition.lang = 'he-IL';
-    recognition.continuous = false;
-    recognition.interimResults = false;
-
-    recognition.onstart = () => setIsListening(true);
-    recognition.onend = () => setIsListening(false);
-    recognition.onerror = (event) => {
-        console.error('Speech recognition error', event.error);
-        setIsListening(false);
-    };
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        const numberStr = parseSpokenNumber(transcript);
-        if (numberStr) {
-            setPriceStr(numberStr);
-            setSpeakTrigger(true);
+    const handleVoiceInput = () => {
+        if (isListening) {
+            stopRecognition();
+        } else {
+            startRecognition();
         }
     };
-    
-    if (!recognitionRef.current) {
-        recognitionRef.current = recognition;
-    }
-    
-    recognition.start();
-  };
 
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
     backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${currentTheme.backgroundImage})`,
@@ -871,7 +883,6 @@ const App = () => {
   return (
     <div className={`flex justify-center ${currentTheme.bodyBg} ${currentTheme.font}`}>
       {isTutorialActive && <Tutorial onFinish={finishTutorial} />}
-      <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
       {renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false))}
       {renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false))}
       
@@ -903,8 +914,8 @@ const App = () => {
         <div className="fixed inset-0 z-50 flex justify-center items-center" onClick={() => setIsSettingsOpen(false)}>
           <div className={`absolute top-0 left-0 h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`} onClick={e => e.stopPropagation()} role="dialog">
             <div className="flex justify-between items-center mb-6">
-               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                <h2 className={`text-2xl font-bold ${currentTheme.modalTextColor}`} style={{ color: currentTheme.headerColor }}>הגדרות</h2>
+               <button onClick={() => setIsSettingsOpen(false)} className={currentTheme.iconClasses} aria-label="Close settings"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
             </div>
             <div className={`flex-grow overflow-y-auto ${currentTheme.modalTextColor}`}>
                 <div className="space-y-6">
@@ -920,9 +931,9 @@ const App = () => {
                         <span className="font-semibold">רקע תמונה</span>
                         <div className="relative"><input type="checkbox" id="image-bg-toggle" className="sr-only" checked={useImageBackground} onChange={() => setUseImageBackground(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${useImageBackground ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${useImageBackground ? 'translate-x-6' : ''}`}></div></div>
                     </label>
-                    <label htmlFor="accessibility-toggle" className="flex items-center justify-between cursor-pointer">
-                        <span className="font-semibold">הקראה לקורא מסך</span>
-                        <div className="relative"><input type="checkbox" id="accessibility-toggle" className="sr-only" checked={isAccessibilityEnabled} onChange={() => setIsAccessibilityEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isAccessibilityEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isAccessibilityEnabled ? 'translate-x-6' : ''}`}></div></div>
+                    <label htmlFor="voice-feedback-toggle" className="flex items-center justify-between cursor-pointer">
+                        <span className="font-semibold text-right">קבל משוב קולי (הקראה חוזרת) של המחיר שהוזן</span>
+                        <div className="relative flex-shrink-0 ml-4"><input type="checkbox" id="voice-feedback-toggle" className="sr-only" checked={isVoiceFeedbackEnabled} onChange={() => setIsVoiceFeedbackEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVoiceFeedbackEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVoiceFeedbackEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
                 </div>
             </div>
