@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>מחשבון הנחות</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#020617"/>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -616,6 +620,7 @@ const App = () => {
 
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing'
+  const [installPrompt, setInstallPrompt] = useState(null);
   
   const finalPrice = useMemo(() => {
     const initialPrice = parseFloat(priceStr) || 0;
@@ -646,6 +651,26 @@ const App = () => {
     if (!hasSeenTutorial) {
       setTimeout(() => setIsTutorialActive(true), 500);
     }
+
+    // PWA Install Logic
+    const handleBeforeInstallPrompt = (e) => {
+        e.preventDefault();
+        setInstallPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => console.log('SW registered: ', registration))
+                .catch(err => console.log('SW registration failed: ', err));
+        });
+    }
+
+    return () => {
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
   
   const currentTheme = themes[theme];
@@ -951,6 +976,14 @@ const App = () => {
         }
     };
     
+    const handleInstallClick = async () => {
+        if (!installPrompt) return;
+        triggerVibration();
+        const result = await installPrompt.prompt();
+        console.log(`Install prompt was: ${result.outcome}`);
+        setInstallPrompt(null);
+    };
+
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
     backgroundImage: `linear-gradient(${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}, ${currentTheme.backgroundOverlay || 'rgba(0,0,0,0)'}), url(${currentTheme.backgroundImage})`,
     backgroundSize: 'cover',
@@ -1014,7 +1047,21 @@ const App = () => {
                     </label>
                 </div>
             </div>
-            <div className="mt-8">
+            <div className="mt-8 space-y-2">
+                {installPrompt && (
+                    <button 
+                        onClick={handleInstallClick} 
+                        className={`w-full text-center py-3 font-semibold rounded-lg ${currentTheme.buttonClasses}`} 
+                        style={{backgroundColor: 'rgba(34, 197, 94, 0.4)', color: currentTheme.resetButtonTextColor || 'white'}}
+                    >
+                        <div className="flex items-center justify-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                            <span>התקן את האפליקציה</span>
+                        </div>
+                    </button>
+                )}
                  <button onClick={() => { setIsSettingsOpen(false); setIsTutorialActive(true); }} className={`w-full text-center py-3 font-semibold rounded-lg ${currentTheme.buttonClasses}`} style={{backgroundColor: currentTheme.manualButtonBg, color: currentTheme.manualButtonTextColor || 'white'}}>צפה שוב במדריך</button>
             </div>
           </div>
