@@ -1,20 +1,25 @@
 
-const CACHE_NAME = 'discount-calculator-v2';
+const CACHE_NAME = 'discount-calculator-v3'; // Incremented version
 const urlsToCache = [
   '/',
   '/index.html',
+  '/manifest.json',
+  '/logo192.png',
+  '/logo512.png'
 ];
 
+// Install the service worker and cache the app shell
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache and caching initial assets');
+        console.log('Opened cache and caching app shell');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
+// Clean up old caches
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
@@ -22,6 +27,7 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
+            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -30,23 +36,24 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Serve cached content first, falling back to network.
 self.addEventListener('fetch', event => {
-  // Use a network-first strategy
+  // We only want to cache GET requests.
+  if (event.request.method !== 'GET') {
+    return;
+  }
+  
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        // If the fetch is successful, update the cache
-        if (response && response.status === 200) {
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then(cache => {
-                cache.put(event.request, responseToCache);
-            });
+    caches.match(event.request)
+      .then(cachedResponse => {
+        // If the resource is in the cache, return it.
+        if (cachedResponse) {
+          return cachedResponse;
         }
-        return response;
-      })
-      .catch(() => {
-        // If the network fails, serve from the cache
-        return caches.match(event.request);
+
+        // If the resource is not in the cache, fetch it from the network.
+        // This is important for resources not cached at install time (e.g., fonts, images)
+        return fetch(event.request);
       })
   );
 });
