@@ -1185,7 +1185,7 @@ root.render(
 
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
+        document.addEventListener('DOMContentLoaded', () => {
           navigator.serviceWorker.register('/service-worker.js')
             .then(registration => {
               console.log('ServiceWorker registration successful with scope: ', registration.scope);
