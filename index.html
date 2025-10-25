@@ -44,6 +44,16 @@
       שלב 1: הדבק כאן את קוד ה-AdSense הראשי שקיבלת מגוגל.
       זהו קוד ה-JavaScript שמתחיל ב-<script async src="..."> 
     -->
+    <script>
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the default browser install prompt
+        e.preventDefault();
+        // Store the event so it can be triggered later.
+        window.deferredInstallPrompt = e;
+        // Fire a custom event to let the app know it can install
+        window.dispatchEvent(new CustomEvent('pwa-install-ready'));
+      });
+    </script>
 
     <!-- Load React and ReactDOM from CDN -->
     <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
@@ -652,15 +662,20 @@ const App = () => {
       setTimeout(() => setIsTutorialActive(true), 500);
     }
 
-    // PWA Install Logic
-    const handleBeforeInstallPrompt = (e) => {
-        e.preventDefault();
-        setInstallPrompt(e);
+    // PWA Install Logic - Listen for our custom event
+    const handlePwaInstallReady = () => {
+        setInstallPrompt(window.deferredInstallPrompt);
     };
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
+    // Check if the prompt is already available
+    if (window.deferredInstallPrompt) {
+        handlePwaInstallReady();
+    } else {
+        window.addEventListener('pwa-install-ready', handlePwaInstallReady);
+    }
+    
     return () => {
-        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.removeEventListener('pwa-install-ready', handlePwaInstallReady);
     };
   }, []);
   
@@ -973,6 +988,7 @@ const App = () => {
         const result = await installPrompt.prompt();
         console.log(`Install prompt was: ${result.outcome}`);
         setInstallPrompt(null);
+        window.deferredInstallPrompt = null;
     };
 
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
