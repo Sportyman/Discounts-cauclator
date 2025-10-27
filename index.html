@@ -45,13 +45,31 @@
       זהו קוד ה-JavaScript שמתחיל ב-<script async src="..."> 
     -->
     <script>
+      // Robust PWA Install Prompt Handler
+      window.pwaInstallHandler = {
+        prompt: null,
+        subscriber: null,
+        setPrompt(e) {
+          e.preventDefault();
+          this.prompt = e;
+          if (this.subscriber) {
+            this.subscriber(this.prompt);
+          }
+        },
+        subscribe(callback) {
+          this.subscriber = callback;
+          // If the prompt is already available, notify the new subscriber immediately.
+          if (this.prompt) {
+            this.subscriber(this.prompt);
+          }
+        },
+        unsubscribe() {
+          this.subscriber = null;
+        }
+      };
+
       window.addEventListener('beforeinstallprompt', (e) => {
-        // Prevent the default browser install prompt
-        e.preventDefault();
-        // Store the event so it can be triggered later.
-        window.deferredInstallPrompt = e;
-        // Fire a custom event to let the app know it can install
-        window.dispatchEvent(new CustomEvent('pwa-install-ready'));
+        window.pwaInstallHandler.setPrompt(e);
       });
     </script>
 
@@ -662,20 +680,15 @@ const App = () => {
       setTimeout(() => setIsTutorialActive(true), 500);
     }
 
-    // PWA Install Logic - Listen for our custom event
-    const handlePwaInstallReady = () => {
-        setInstallPrompt(window.deferredInstallPrompt);
+    // PWA Install Logic - Subscribe to the robust handler
+    const handlePromptAvailable = (promptEvent) => {
+        setInstallPrompt(promptEvent);
     };
 
-    // Check if the prompt is already available
-    if (window.deferredInstallPrompt) {
-        handlePwaInstallReady();
-    } else {
-        window.addEventListener('pwa-install-ready', handlePwaInstallReady);
-    }
+    window.pwaInstallHandler.subscribe(handlePromptAvailable);
     
     return () => {
-        window.removeEventListener('pwa-install-ready', handlePwaInstallReady);
+        window.pwaInstallHandler.unsubscribe();
     };
   }, []);
   
@@ -987,8 +1000,9 @@ const App = () => {
         triggerVibration();
         const result = await installPrompt.prompt();
         console.log(`Install prompt was: ${result.outcome}`);
+        // The prompt can only be used once.
         setInstallPrompt(null);
-        window.deferredInstallPrompt = null;
+        window.pwaInstallHandler.prompt = null;
     };
 
   const containerStyle = useImageBackground && currentTheme.backgroundImage ? {
