@@ -1,8 +1,9 @@
 
-const CACHE_NAME = 'discount-calculator-v3'; // Incremented version
+const CACHE_NAME = 'discount-calculator-v4-structural'; // Incremented version for major change
 const urlsToCache = [
   '/',
   '/index.html',
+  '/index.tsx', // Caching the actual application code is the most critical change.
   '/manifest.json',
   '/logo192.png',
   '/logo512.png'
@@ -13,7 +14,7 @@ self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache and caching app shell');
+        console.log('Opened cache and caching app shell and core application script.');
         return cache.addAll(urlsToCache);
       })
   );
@@ -43,6 +44,13 @@ self.addEventListener('fetch', event => {
     return;
   }
   
+  // For navigation requests (e.g., loading the page), always serve index.html.
+  // This is a common pattern for Single Page Applications (SPAs).
+  if (event.request.mode === 'navigate') {
+    event.respondWith(caches.match('/index.html'));
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then(cachedResponse => {
@@ -52,7 +60,7 @@ self.addEventListener('fetch', event => {
         }
 
         // If the resource is not in the cache, fetch it from the network.
-        // This is important for resources not cached at install time (e.g., fonts, images)
+        // This is important for external resources like fonts or images not in the initial cache.
         return fetch(event.request);
       })
   );
