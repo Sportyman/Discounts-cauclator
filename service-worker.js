@@ -1,113 +1,90 @@
+// A unique name for our cache. Changing this will trigger the 'activate' event.
+const CACHE_NAME = 'discount-calculator-v2';
 
-const STATIC_CACHE_NAME = 'discount-calculator-static-v8'; // Cache for app shell and critical assets
-const DYNAMIC_CACHE_NAME = 'discount-calculator-dynamic-v8'; // Cache for dynamic content like images and fonts
-
-// All the assets that are part of the app shell and are critical for the first load.
-const APP_SHELL_ASSETS = [
-  './',
+// The list of all files and resources the app needs to function offline.
+const PRECACHE_ASSETS = [
+  './', // Alias for index.html
   './index.html',
   './manifest.json',
   './logo192.png',
   './logo512.png',
-  'https://cdn.tailwindcss.com', // Tailwind CSS
-  'https://fonts.googleapis.com/css2?family=Assistant:wght@400;700;800&family=Patrick+Hand&display=swap', // Google Fonts CSS
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap' // Google Fonts CSS
+  'https://cdn.tailwindcss.com',
+  'https://fonts.googleapis.com/css2?family=Assistant:wght@400;700;800&family=Patrick+Hand&display=swap',
+  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap',
 ];
 
-// Install: Open cache and add all shell assets.
+// The install event is fired when the service worker is first installed.
 self.addEventListener('install', event => {
+  console.log('[SW] Install event!');
+  // We wait until the assets are cached before finishing installation.
   event.waitUntil(
-    caches.open(STATIC_CACHE_NAME)
+    caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('[SW] Pre-caching App Shell and critical assets.');
-        // Use {cache: 'reload'} to bypass browser cache for these critical assets during install.
-        const requests = APP_SHELL_ASSETS.map(url => new Request(url, {cache: 'reload'}));
+        console.log('[SW] Caching pre-cache assets');
+        // Use addAll to fetch and cache all the assets in the list.
+        // Using a new Request with reload option to bypass browser HTTP cache.
+        const requests = PRECACHE_ASSETS.map(url => new Request(url, { cache: 'reload' }));
         return cache.addAll(requests);
       })
-      .then(() => self.skipWaiting())
+      .then(() => {
+        // Force the waiting service worker to become the active service worker.
+        return self.skipWaiting();
+      })
   );
 });
 
-// Activate: Clean up old caches.
+// The activate event is fired when the service worker becomes active.
+// It's a good place to clean up old caches.
 self.addEventListener('activate', event => {
+  console.log('[SW] Activate event!');
   event.waitUntil(
-    caches.keys().then(cacheKeys => {
-      return Promise.all(cacheKeys.map(key => {
-        // Delete all caches that are not the current static or dynamic cache
-        if (key !== STATIC_CACHE_NAME && key !== DYNAMIC_CACHE_NAME) {
-          console.log('[SW] Removing old cache:', key);
-          return caches.delete(key);
-        }
-      }));
-    }).then(() => self.clients.claim())
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          // If a cache's name is not our current cache name, delete it.
+          if (cacheName !== CACHE_NAME) {
+            console.log('[SW] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    }).then(() => {
+        // Tell the active service worker to take control of the page immediately.
+        return self.clients.claim();
+    })
   );
 });
 
-// Stale-While-Revalidate strategy function
-const staleWhileRevalidate = (request, cacheName = DYNAMIC_CACHE_NAME) => {
-    return caches.open(cacheName).then(cache => {
-        return cache.match(request).then(cachedResponse => {
-            const fetchPromise = fetch(request).then(networkResponse => {
-                // If the fetch is successful, clone it and put it in the dynamic cache
-                cache.put(request, networkResponse.clone());
-                return networkResponse;
-            }).catch(err => {
-                // If fetch fails and there's no cached response, the request will fail.
-                // This is expected for optional assets like images when offline.
-                console.warn(`[SW] Fetch failed for ${request.url}:`, err);
-            });
-            // Return cached response immediately if available, otherwise wait for the network
-            return cachedResponse || fetchPromise;
-        });
-    });
-};
-
-
-// Fetch: Implement caching strategies
+// The fetch event is fired for every network request the page makes.
 self.addEventListener('fetch', event => {
   const { request } = event;
 
-  // Ignore non-GET requests
+  // We only care about GET requests.
   if (request.method !== 'GET') {
     return;
   }
   
-  const url = new URL(request.url);
-
-  // Strategy 1: For pre-cached app shell assets, use Cache-first.
-  if (APP_SHELL_ASSETS.some(assetUrl => request.url.endsWith(new URL(assetUrl, self.location.origin).pathname))) {
-      event.respondWith(
-          caches.match(request, { cacheName: STATIC_CACHE_NAME }).then(response => {
-              return response || fetch(request);
-          })
-      );
-      return;
-  }
-
-  // Strategy 2: For dynamic assets (fonts, images), use Stale-While-Revalidate.
-  if (url.hostname === 'fonts.gstatic.com' || url.hostname === 'images.unsplash.com') {
-      event.respondWith(staleWhileRevalidate(request, DYNAMIC_CACHE_NAME));
-      return;
-  }
-  
-  // Strategy 3: For local files not in the app shell (if any), use cache-first
-  if (url.origin === self.location.origin) {
-    event.respondWith(
-      caches.match(request).then(cachedResponse => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetch(request).then(networkResponse => {
-            return caches.open(DYNAMIC_CACHE_NAME).then(cache => {
-                cache.put(request, networkResponse.clone());
-                return networkResponse;
-            });
+  // Use a "Stale-While-Revalidate" strategy.
+  // This strategy will respond with a cached version if available (stale),
+  // and then fetch a fresh version from the network in the background to update the cache for the next time.
+  event.respondWith(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.match(request).then(cachedResponse => {
+        // Fetch the resource from the network.
+        const fetchPromise = fetch(request).then(networkResponse => {
+          // If we get a valid response, we clone it and update the cache.
+          // This handles caching for dynamically loaded resources like fonts from Google's CSS.
+          if (networkResponse && networkResponse.status === 200) {
+            cache.put(request, networkResponse.clone());
+          }
+          return networkResponse;
         });
-      })
-    );
-    return;
-  }
 
-  // Default: just fetch from network for any other requests.
-  event.respondWith(fetch(request));
+        // Return the cached response immediately if it exists,
+        // otherwise, wait for the network response.
+        // This makes the app feel fast and work offline.
+        return cachedResponse || fetchPromise;
+      });
+    })
+  );
 });
