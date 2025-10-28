@@ -565,6 +565,7 @@ const App = () => {
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing'
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [serviceWorkerStatus, setServiceWorkerStatus] = useState('בודק...');
   
   const finalPrice = useMemo(() => {
     const initialPrice = parseFloat(priceStr) || 0;
@@ -591,6 +592,21 @@ const App = () => {
   useEffect(() => { isVoiceFeedbackEnabledRef.current = isVoiceFeedbackEnabled; }, [isVoiceFeedbackEnabled]);
 
   useEffect(() => {
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js')
+        .then(registration => {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            setServiceWorkerStatus('✅ רשום');
+        })
+        .catch(error => {
+            console.log('ServiceWorker registration failed: ', error);
+            setServiceWorkerStatus('❌ נכשל');
+        });
+    } else {
+        setServiceWorkerStatus('לא נתמך');
+    }
+
     const hasSeenTutorial = getFromLocalStorage('calculator-tutorial-seen', false);
     if (!hasSeenTutorial) {
       setTimeout(() => setIsTutorialActive(true), 500);
@@ -982,6 +998,12 @@ const App = () => {
                         <span className="font-semibold text-right">קבל משוב קולי (הקראה חוזרת) של המחיר שהוזן</span>
                         <div className="relative flex-shrink-0 ml-4"><input type="checkbox" id="voice-feedback-toggle" className="sr-only" checked={isVoiceFeedbackEnabled} onChange={() => setIsVoiceFeedbackEnabled(prev => !prev)} /><div className={`block w-14 h-8 rounded-full ${isVoiceFeedbackEnabled ? 'bg-sky-500' : 'bg-gray-500'}`}></div><div className={`dot absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${isVoiceFeedbackEnabled ? 'translate-x-6' : ''}`}></div></div>
                     </label>
+                    <div className="pt-2 border-t border-white/10">
+                        <div className="flex items-center justify-between">
+                            <span className="font-semibold">סטטוס התקנה (PWA)</span>
+                            <span className="font-mono text-sm">{serviceWorkerStatus}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div className="mt-8 space-y-2">
