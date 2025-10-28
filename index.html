@@ -664,9 +664,21 @@ const App = () => {
       setTimeout(() => setIsTutorialActive(true), 500);
     }
 
-    const handleInstallPrompt = (e) => {
+    const handleInstallPrompt = async (e) => {
       e.preventDefault();
       setInstallPrompt(e);
+      
+      const hasBeenOfferedInstall = getFromLocalStorage('hasBeenOfferedInstall', false);
+      if (!hasBeenOfferedInstall && !isStandalone) {
+          try {
+              const { outcome } = await e.prompt();
+              console.log(`User response to the install prompt: ${outcome}`);
+          } catch (err) {
+              console.error('Error attempting to prompt for install:', err);
+          } finally {
+              saveToLocalStorage('hasBeenOfferedInstall', true);
+          }
+      }
     };
 
     window.addEventListener('beforeinstallprompt', handleInstallPrompt);
