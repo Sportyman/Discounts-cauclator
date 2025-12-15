@@ -18,6 +18,10 @@
   ],
   "start_url": ".",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#020617",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "categories": ["shopping", "finance", "utilities"],
+  "lang": "he",
+  "dir": "rtl"
 }

@@ -2,13 +2,18 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>מחשבון הנחות</title>
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="logo192.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="theme-color" content="#020617"/>
+    
+    <!-- Google AdSense Script -->
+    <!-- REPLACE 'ca-pub-XXXXXXXXXXXXXXXX' WITH YOUR ACTUAL ADSENSE CLIENT ID -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX" crossorigin="anonymous"></script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,6 +43,15 @@
         0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
         70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
         100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+      }
+      /* Ad container styling */
+      .ad-container {
+        width: 100%;
+        min-height: 100px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        overflow: hidden;
       }
     </style>
 <script type="importmap">
@@ -626,6 +640,35 @@ const Tutorial = ({ onFinish }) => {
 };
 
 
+// --- AdSense Component ---
+const AdBanner = ({ className }) => {
+  useEffect(() => {
+    try {
+      // Check if adsbygoogle is loaded
+      if (typeof window !== 'undefined') {
+        (window.adsbygoogle = window.adsbygoogle || []).push({});
+      }
+    } catch (err) {
+      console.error('AdSense error:', err);
+    }
+  }, []);
+
+  return (
+    React.createElement('div', { className: `ad-container ${className}` },
+      // REPLACE with your actual ad slot
+      React.createElement('ins', {
+        className: "adsbygoogle",
+        style: { display: 'block', width: '100%' },
+        'data-ad-client': "ca-pub-XXXXXXXXXXXXXXXX", // REPLACE THIS
+        'data-ad-slot': "XXXXXXXXXX", // REPLACE THIS
+        'data-ad-format': "auto",
+        'data-full-width-responsive': "true"
+      })
+    )
+  );
+};
+
+
 // --- Main Application Component ---
 
 const App = () => {
@@ -645,6 +688,7 @@ const App = () => {
   const [isThemeDropdownOpen, setIsThemeDropdownOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPrivacyPolicyOpen, setIsPrivacyPolicyOpen] = useState(false);
 
   const [isListening, setIsListening] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing'
@@ -761,7 +805,7 @@ const App = () => {
   
   const currentMonth = new Date().toLocaleString('he-IL', { month: 'long' });
 
-  const adUnitCode = `<div style="text-align:center; padding: 16px; color: #555; background-color: #e0e0e0; font-size: 14px;">שטח המיועד לפרסומת באנר</div>`;
+  // Replaced static ad string with AdBanner component usage below
   
   const handleNumpadInput = (value) => {
     if (value === '⌫') {
@@ -1059,7 +1103,24 @@ const App = () => {
       isTutorialActive && React.createElement(Tutorial, { onFinish: finishTutorial }),
       renderOverlay(isHistoryOpen, () => setIsHistoryOpen(false)),
       renderOverlay(isSettingsOpen, () => setIsSettingsOpen(false)),
+      renderOverlay(isPrivacyPolicyOpen, () => setIsPrivacyPolicyOpen(false)),
       
+      // Privacy Policy Modal
+      isPrivacyPolicyOpen && (
+         React.createElement('div', { className: "fixed inset-0 z-[95] flex justify-center items-center p-4", onClick: () => setIsPrivacyPolicyOpen(false) },
+            React.createElement('div', { className: `w-full max-w-[420px] max-h-[80vh] overflow-y-auto rounded-xl shadow-2xl p-6 ${currentTheme.modalBg}`, onClick: e => e.stopPropagation() },
+                 React.createElement('h2', { className: `text-2xl font-bold mb-4 ${currentTheme.modalTextColor}` }, "מדיניות פרטיות"),
+                 React.createElement('div', { className: `text-sm space-y-4 ${currentTheme.modalTextColor}` },
+                    React.createElement('p', null, "אפליקציית 'מחשבון הנחות' מכבדת את פרטיותך. המידע שהנך מזין לאפליקציה (כגון מחירי מוצרים) נשמר מקומית על המכשיר שלך בלבד ואינו נשלח לשרתים חיצוניים."),
+                    React.createElement('p', null, "האפליקציה משתמשת בשירותי צד ג' (Google AdSense) לצורך הצגת פרסומות. שירותים אלו עשויים להשתמש ב-Cookies וטכנולוגיות דומות כדי להציג מודעות רלוונטיות."),
+                    React.createElement('p', null, "השימוש במיקרופון נעשה אך ורק לצורך פונקציית הזיהוי הקולי בזמן אמת, והקלטות אינן נשמרות."),
+                    React.createElement('p', null, "לשאלות נוספות ניתן לפנות למפתח.")
+                 ),
+                 React.createElement('button', { onClick: () => setIsPrivacyPolicyOpen(false), className: `mt-6 w-full py-2 font-bold rounded-lg ${currentTheme.buttonClasses}`, style: {backgroundColor: currentTheme.presetButtonBg, color: currentTheme.presetButtonTextColor} }, "סגור")
+            )
+         )
+      ),
+
       isHistoryOpen && (
         React.createElement('div', { className: "fixed inset-0 z-[90] flex justify-start", onClick: () => setIsHistoryOpen(false) },
             React.createElement('div', { className: `h-full w-full max-w-[420px] shadow-2xl p-6 flex flex-col ${currentTheme.modalBg}`, onClick: e => e.stopPropagation(), role: "dialog" },
@@ -1116,6 +1177,9 @@ const App = () => {
                     React.createElement('h3', { className: `font-semibold mb-2 ${currentTheme.modalTextColor}`}, "ניהול אפליקציה"),
                     React.createElement(AppManagement, null)
                 ),
+                 // Privacy Policy Button
+                React.createElement('button', { onClick: () => { setIsSettingsOpen(false); setIsPrivacyPolicyOpen(true); }, className: `w-full text-center py-2 font-semibold rounded-lg text-sm bg-white/10 text-gray-300 hover:bg-white/20` }, "מדיניות פרטיות"),
+
                 React.createElement('button', { onClick: () => { setIsSettingsOpen(false); setIsTutorialActive(true); }, className: `w-full text-center py-3 font-semibold rounded-lg ${currentTheme.buttonClasses}`, style: {backgroundColor: currentTheme.manualButtonBg, color: currentTheme.manualButtonTextColor || 'white'} }, "צפה שוב במדריך")
             )
           )
@@ -1207,8 +1271,13 @@ const App = () => {
         ),
         
         React.createElement('footer', { className: "mt-auto flex-shrink-0" },
-          React.createElement('div', { className: currentTheme.footerClasses }, React.createElement('a', { href: "https://s.click.aliexpress.com/e/_oEcAHoN", target: "_blank", rel: "noopener noreferrer", className: currentTheme.footerLinkClasses }, `🎁 קופונים עדכניים • ${currentMonth}`)),
-          React.createElement('div', { className: "bg-gray-200", dangerouslySetInnerHTML: { __html: adUnitCode } })
+          React.createElement('div', { className: currentTheme.footerClasses }, 
+            React.createElement('a', { href: "https://s.click.aliexpress.com/e/_oEcAHoN", target: "_blank", rel: "noopener noreferrer", className: currentTheme.footerLinkClasses }, `🎁 קופונים עדכניים • ${currentMonth}`)
+          ),
+          // Google Ad Banner
+          React.createElement('div', { className: "bg-gray-200 mt-2" },
+             React.createElement(AdBanner)
+          )
         )
       )
     )
