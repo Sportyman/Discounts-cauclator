@@ -504,6 +504,12 @@ const tutorialSteps = [
         position: 'bottom',
     },
     {
+        selector: '#voice-button',
+        title: 'הזנה קולית חכמה',
+        text: "רוצים לעבוד מהר? לחצו כאן ואמרו את המחיר. המחשבון יתעדכן מיד ויחכה למחיר הבא. כדי לעצור, אמרו 'כבה' או 'כיבוי'.",
+        position: 'bottom'
+    },
+    {
         selector: '#numpad-grid',
         title: 'שימוש במקלדת',
         text: 'השתמשו במקשים אלה כדי להזין את המחיר.',
@@ -526,12 +532,6 @@ const tutorialSteps = [
         title: 'היסטוריית חישובים',
         text: 'רוצים לראות חישובים קודמים? לחצו כאן כדי לפתוח את ההיסטוריה.',
         position: 'bottom',
-    },
-    {
-        selector: '#voice-button',
-        title: 'הזנה קולית',
-        text: 'לנוחיותכם, ניתן גם להזין את המחיר באמצעות הקול על ידי לחיצה כאן.',
-        position: 'bottom'
     },
 ];
 
@@ -1050,10 +1050,12 @@ const App = () => {
 
                 let interimTranscript = '';
                 let finalTranscript = '';
+                let hasFinal = false;
 
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         finalTranscript += event.results[i][0].transcript;
+                        hasFinal = true;
                     } else {
                         interimTranscript += event.results[i][0].transcript;
                     }
@@ -1069,30 +1071,28 @@ const App = () => {
                      return;
                 }
 
-                // 2. Check for PROCESS trigger ("Zehu")
+                // 2. Continuous flow handling - check for Trigger Word (Zehu) or Final Result
+                
+                // If "Zehu" is detected, process immediately (even if interim)
                 if (combinedTranscript.includes(triggerWord)) {
-                    // Extract text before "zehu"
                     const cleanText = combinedTranscript.split(triggerWord)[0];
                     processVoiceInput(cleanText);
-                    
-                    // We DO NOT call stopRecognition() here because we want to loop.
-                    // We just stop the *current* stream technically to reset, but the intent remains true.
-                    if (recognitionRef.current) {
-                        recognitionRef.current.stop(); // This triggers onend, which checks flags
-                    }
+                    // CRITICAL: We do NOT call stop() here anymore, keeping the stream open
                     return;
                 }
                 
-                // Fallback: If result is final but no keyword, just update price potentially? 
-                // Currently, we only process on "Zehu" for the "Workflow". 
-                // But for standard usage without "Zehu", we might want to process final results too?
-                // The user request implies "Say number + Zehu -> Calc".
-                // If they just say "50", we probably shouldn't calc yet? 
-                // Let's stick to parsing numbers as they come for display, but only speaking/finalizing on "Zehu".
+                // If the user paused and result is final, treat it as a complete number entry
+                if (hasFinal) {
+                     // Use the final transcript to calculate
+                     processVoiceInput(finalTranscript);
+                     // CRITICAL: We do NOT call stop() here anymore
+                     return;
+                }
                 
+                // Fallback: Just update the display for interim results (without vibrating/calculating)
                 const currentNum = parseSpokenNumber(combinedTranscript);
                 if (currentNum) {
-                     setPriceStr(currentNum); // Live update display
+                     setPriceStr(currentNum); 
                 }
             };
         }
