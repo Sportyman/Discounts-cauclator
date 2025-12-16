@@ -506,7 +506,7 @@ const tutorialSteps = [
     {
         selector: '#voice-button',
         title: 'הזנה קולית חכמה',
-        text: "רוצים לעבוד מהר? לחצו כאן ואמרו את המחיר. המחשבון יתעדכן מיד ויחכה למחיר הבא. כדי לעצור, אמרו 'כבה' או 'כיבוי'.",
+        text: "רוצים לרוץ מהר? לחצו כאן, אמרו את המחיר והוסיפו את המילה 'זהו' (למשל: 'מאה וחמישים זהו'). המחשבון יחשב מיד ויקשיב למחיר הבא. כדי לסיים, אמרו 'כבה'.",
         position: 'bottom'
     },
     {
@@ -1048,20 +1048,14 @@ const App = () => {
             recognition.onresult = (event) => {
                 if (isSpeakingRef.current) return;
 
-                let interimTranscript = '';
-                let finalTranscript = '';
-                let hasFinal = false;
-
+                let latestTranscript = '';
+                // Get the latest result only to avoid processing old history
+                // In continuous mode, event.results accumulates. We look at the new parts.
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                        hasFinal = true;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
+                    latestTranscript += event.results[i][0].transcript;
                 }
 
-                const combinedTranscript = (finalTranscript + interimTranscript).toLowerCase();
+                const combinedTranscript = latestTranscript.toLowerCase();
                 const triggerWord = 'זהו';
                 const stopWords = ['כבה', 'כיבוי'];
 
@@ -1071,22 +1065,15 @@ const App = () => {
                      return;
                 }
 
-                // 2. Continuous flow handling - check for Trigger Word (Zehu) or Final Result
+                // 2. Continuous flow handling - check for Trigger Word (Zehu) ONLY
+                // We REMOVED the check for 'isFinal' to prevent the browser from stopping on silence.
+                // We rely strictly on the keyword "Zehu" to process.
                 
-                // If "Zehu" is detected, process immediately (even if interim)
                 if (combinedTranscript.includes(triggerWord)) {
                     const cleanText = combinedTranscript.split(triggerWord)[0];
                     processVoiceInput(cleanText);
                     // CRITICAL: We do NOT call stop() here anymore, keeping the stream open
                     return;
-                }
-                
-                // If the user paused and result is final, treat it as a complete number entry
-                if (hasFinal) {
-                     // Use the final transcript to calculate
-                     processVoiceInput(finalTranscript);
-                     // CRITICAL: We do NOT call stop() here anymore
-                     return;
                 }
                 
                 // Fallback: Just update the display for interim results (without vibrating/calculating)
