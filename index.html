@@ -681,7 +681,7 @@ const App = () => {
   const [history, setHistory] = useState(() => getFromLocalStorage('calculator-history', []));
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => getFromLocalStorage('calculator-sound-enabled', false));
   const [isVibrationEnabled, setIsVibrationEnabled] = useState(() => getFromLocalStorage('calculator-vibration-enabled', true));
-  const [isVoiceFeedbackEnabled, setIsVoiceFeedbackEnabled] = useState(() => getFromLocalStorage('calculator-voice-feedback-enabled', true));
+  const [isVoiceFeedbackEnabled, setIsVoiceFeedbackEnabled] = useState(() => getFromLocalStorage('calculator-voice-feedback-enabled', false));
   const [useImageBackground, setUseImageBackground] = useState(() => getFromLocalStorage('calculator-image-background-enabled', true));
   const [isTutorialActive, setIsTutorialActive] = useState(false);
   
@@ -708,6 +708,7 @@ const App = () => {
   const rapidDeleteIntervalRef = useRef(null);
   const recognitionRef = useRef(null);
   const isManuallyStoppingRef = useRef(false);
+  const shouldMaintainSessionRef = useRef(false); // New Ref for continuous session
   const isSpeakingRef = useRef(false);
   const lastProcessedNumberRef = useRef('');
 
@@ -908,6 +909,7 @@ const App = () => {
   };
 
     const stopRecognition = () => {
+        shouldMaintainSessionRef.current = false;
         isManuallyStoppingRef.current = true;
         isSpeakingRef.current = false;
         window.speechSynthesis.cancel();
@@ -940,6 +942,7 @@ const App = () => {
 
     const speakPrice = (newFinalPrice) => {
          if (recognitionRef.current) {
+            // Just stop the technical listening during speech, but keep intent
             recognitionRef.current.stop();
         }
 
@@ -952,9 +955,13 @@ const App = () => {
         
         utterance.onend = () => {
             isSpeakingRef.current = false;
-            // No auto-restart after speaking - we are done with this interaction
-            setIsListening(false);
-            setVoiceStatus('idle');
+            // IMPORTANT: If we are in continuous mode, restart!
+            if (shouldMaintainSessionRef.current) {
+                startRecognition();
+            } else {
+                setIsListening(false);
+                setVoiceStatus('idle');
+            }
         };
         window.speechSynthesis.speak(utterance);
     };
@@ -966,6 +973,9 @@ const App = () => {
             setPriceStr(numberStr);
             setVoiceStatus('processing');
             
+            // Added vibration here to signal "Zehu" was accepted even if voice feedback is off
+            triggerVibration();
+
             const newPrice = parseFloat(numberStr) || 0;
             const newFinalPrice = discountsRef.current.reduce((currentPrice, discount) => {
                 if (discount.active) return currentPrice * (1 - discount.value / 100);
@@ -979,6 +989,7 @@ const App = () => {
     };
 
     const startRecognition = () => {
+        shouldMaintainSessionRef.current = true;
         if (!recognitionRef.current) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             if (!SpeechRecognition) {
@@ -1000,10 +1011,19 @@ const App = () => {
                     return;
                 }
                 
-                // If we ended naturally without "Zehu" (e.g., silence), we stop.
-                // We do NOT restart automatically anymore.
-                setIsListening(false);
-                setVoiceStatus('idle');
+                // If the user hasn't explicitly stopped, and we aren't speaking, RESTART.
+                if (shouldMaintainSessionRef.current && !isSpeakingRef.current) {
+                    try {
+                        recognition.start();
+                    } catch(e) {
+                         console.error("Failed to auto-restart", e);
+                         setIsListening(false);
+                         setVoiceStatus('idle');
+                    }
+                } else {
+                    setIsListening(false);
+                    setVoiceStatus('idle');
+                }
             };
 
             recognition.onerror = (event) => {
@@ -1012,9 +1032,16 @@ const App = () => {
                      // Specific handling for permission denied
                      stopRecognition();
                      alert('נראה שאין גישה למיקרופון. אנא אשרו את הגישה בהגדרות הדפדפן כדי להשתמש בזיהוי קולי.');
+                } else if (event.error === 'no-speech') {
+                     // Do nothing, let it loop
                 } else {
-                    setIsListening(false);
-                    setVoiceStatus('idle');
+                    // For other errors, we might want to stop to prevent loops
+                    if (shouldMaintainSessionRef.current) {
+                        // Optional: try to restart?
+                    } else {
+                        setIsListening(false);
+                        setVoiceStatus('idle');
+                    }
                 }
             };
 
@@ -1032,22 +1059,40 @@ const App = () => {
                     }
                 }
 
-                const combinedTranscript = finalTranscript + interimTranscript;
+                const combinedTranscript = (finalTranscript + interimTranscript).toLowerCase();
                 const triggerWord = 'זהו';
+                const stopWords = ['כבה', 'כיבוי'];
 
-                // Check for trigger word "Zehu"
+                // 1. Check for STOP words
+                if (stopWords.some(word => combinedTranscript.includes(word))) {
+                     stopRecognition();
+                     return;
+                }
+
+                // 2. Check for PROCESS trigger ("Zehu")
                 if (combinedTranscript.includes(triggerWord)) {
                     // Extract text before "zehu"
                     const cleanText = combinedTranscript.split(triggerWord)[0];
                     processVoiceInput(cleanText);
-                    stopRecognition(); // Immediately stop listening
+                    
+                    // We DO NOT call stopRecognition() here because we want to loop.
+                    // We just stop the *current* stream technically to reset, but the intent remains true.
+                    if (recognitionRef.current) {
+                        recognitionRef.current.stop(); // This triggers onend, which checks flags
+                    }
                     return;
                 }
                 
-                // Fallback: If user stops speaking and result is final, we also process and stop
-                if (event.results[event.results.length - 1].isFinal) {
-                    processVoiceInput(finalTranscript);
-                    stopRecognition(); // Immediately stop listening
+                // Fallback: If result is final but no keyword, just update price potentially? 
+                // Currently, we only process on "Zehu" for the "Workflow". 
+                // But for standard usage without "Zehu", we might want to process final results too?
+                // The user request implies "Say number + Zehu -> Calc".
+                // If they just say "50", we probably shouldn't calc yet? 
+                // Let's stick to parsing numbers as they come for display, but only speaking/finalizing on "Zehu".
+                
+                const currentNum = parseSpokenNumber(combinedTranscript);
+                if (currentNum) {
+                     setPriceStr(currentNum); // Live update display
                 }
             };
         }
@@ -1240,7 +1285,7 @@ const App = () => {
                 ${voiceStatus === 'listening' ? 'mic-indicator-ring' : ''}
                 ${voiceStatus === 'processing' ? 'bg-sky-500 text-white' : ''}
               `, 'aria-label': "הזנת מחיר בקול" },
-              React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className: "h-6 w-6", viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { fillRule: "evenodd", d: "M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z", clipRule: "evenodd" }))
+              React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className: "h-6 w-6", viewBox: "0 0 20 20", fill: "currentColor" }, React.createElement('path', { fillRule: "evenodd", d: "M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm5 8a5 5 0 01-10 0H0a1 1 0 011-1h1a1 1 0 011 1h2a1 1 0 011 1h2a1 1 0 011 1h1a1 1 0 011-1h1a1 1 0 011 1z", clipRule: "evenodd" }))
             ),
             priceStr && (React.createElement('button', { onClick: clearPrice, className: "absolute left-12 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-gray-200 text-gray-600 rounded-full hover:bg-gray-300", 'aria-label': "Clear price" }, React.createElement('svg', { xmlns: "http://www.w3.org/2000/svg", className: "h-5 w-5", fill: "none", viewBox: "0 0 24 24", stroke: "currentColor" }, React.createElement('path', { strokeLinecap: "round", strokeLinejoin: "round", strokeWidth: 2, d: "M6 18L18 6M6 6l12 12" })))),
             priceStr ? React.createElement('span', { className: currentTheme.priceTextClasses }, displayPrice) : React.createElement('span', { className: currentTheme.pricePlaceholderClasses }, "הזינו מחיר")
